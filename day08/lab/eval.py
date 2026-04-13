@@ -56,7 +56,7 @@ api_base = os.getenv("OPENAI_API_BASE")
 def get_judge_llm():
     """Khởi tạo LLM làm giám khảo chấm điểm"""
     return ChatOpenAI(
-        model=os.getenv("LLM_MODEL", "openai/gpt-4o-mini"),
+        model=os.getenv("OPENAI_CHAT_MODEL", os.getenv("LLM_MODEL", "gpt-4o-mini")),
         openai_api_key=os.getenv("OPENAI_API_KEY"),
         openai_api_base=api_base if api_base else None,
         temperature=0
@@ -113,7 +113,7 @@ def score_faithfulness(
              Rate the faithfulness on a scale of 1-5.
              5 = completely grounded in the provided context.
              1 = answer contains information not in the context.
-             Output JSON: {'score': <int>, 'reason': '<string>'}"""
+             Output JSON: {{"score": <int>, "reason": "<string>"}}"""
     try:
         response = llm.invoke(prompt)
         import re,json
@@ -514,14 +514,17 @@ Generated: {timestamp}
 # =============================================================================
 
 if __name__ == "__main__":
+    import sys
+    input_path = Path(sys.argv[sys.argv.index("--input") + 1]) if "--input" in sys.argv else TEST_QUESTIONS_PATH
+
     print("=" * 60)
     print("Sprint 4: Evaluation & Scorecard")
     print("=" * 60)
 
     # Kiểm tra test questions
-    print(f"\nLoading test questions từ: {TEST_QUESTIONS_PATH}")
+    print(f"\nLoading test questions từ: {input_path}")
     try:
-        with open(TEST_QUESTIONS_PATH, "r", encoding="utf-8") as f:
+        with open(input_path, "r", encoding="utf-8") as f:
             test_questions = json.load(f)
         print(f"Tìm thấy {len(test_questions)} câu hỏi")
 

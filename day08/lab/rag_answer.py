@@ -32,10 +32,11 @@ load_dotenv()
 # CẤU HÌNH
 # =============================================================================
 
-TOP_K_SEARCH = 10    # Số chunk lấy từ vector store trước rerank (search rộng)
-TOP_K_SELECT = 3     # Số chunk gửi vào prompt sau rerank/select (top-3 sweet spot)
+TOP_K_SEARCH = int(os.getenv("TOP_K_RETRIEVAL", 10))
+TOP_K_SELECT = int(os.getenv("TOP_K_RERANK", 5))
+RELEVANCE_THRESHOLD = float(os.getenv("RELEVANCE_THRESHOLD", 0.35))
 
-LLM_MODEL          = os.getenv("LLM_MODEL", "gpt-4o-mini")
+LLM_MODEL          = os.getenv("OPENAI_CHAT_MODEL", os.getenv("LLM_MODEL", "gpt-4o-mini"))
 CHROMA_PERSIST_DIR = os.getenv("CHROMA_PERSIST_DIR", "./data/chroma_db")
 EMBEDDING_MODEL    = os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
 
@@ -207,28 +208,48 @@ def rerank(
     top_k: int = TOP_K_SELECT,
 ) -> List[Dict[str, Any]]:
     """
-    Rerank các candidate chunks bằng cross-encoder.
+    Rerank các candidate chunks bằng OpenAI LLM-as-reranker.
     """
     if not candidates:
         return []
-        
-    from sentence_transformers import CrossEncoder
-    
-    # Model nhỏ, chạy nhanh trên CPU
-    model = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
-    
-    pairs = [[query, c["text"]] for c in candidates]
-    scores = model.predict(pairs)
-    
-    # Sắp xếp lại dựa trên score của Cross-Encoder
-    ranked_candidates = []
-    for i in range(len(candidates)):
-        c = candidates[i].copy()
-        c["rerank_score"] = float(scores[i])
-        ranked_candidates.append(c)
-        
-    ranked_candidates.sort(key=lambda x: x["rerank_score"], reverse=True)
-    return ranked_candidates[:top_k]
+
+    from openai import OpenAI
+    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+    chunks_text = "\n\n".join(
+        f"[{i+1}] {c['text'][:300]}" for i, c in enumerate(candidates)
+    )
+    prompt = (
+        f"Given the query: \"{query}\"\n\n"
+        f"Rank the following chunks by relevance (most relevant first).\n"
+        f"Return ONLY a JSON array of chunk numbers in order, e.g. [3,1,2].\n\n"
+        f"{chunks_text}"
+    )
+    try:
+        response = client.chat.completions.create(
+            model=os.getenv("OPENAI_CHAT_MODEL", "gpt-4o-mini"),
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0,
+            max_tokens=100,
+        )
+        import re, json as _json
+        match = re.search(r"\[[\d,\s]+\]", response.choices[0].message.content)
+        order = _json.loads(match.group()) if match else list(range(1, len(candidates)+1))
+        # Reorder candidates theo thứ tự LLM trả về (1-indexed)
+        seen = set()
+        ranked = []
+        for idx in order:
+            i = idx - 1
+            if 0 <= i < len(candidates) and i not in seen:
+                ranked.append(candidates[i])
+                seen.add(i)
+        # Append các chunk chưa được rank
+        for i, c in enumerate(candidates):
+            if i not in seen:
+                ranked.append(c)
+        return ranked[:top_k]
+    except Exception:
+        return candidates[:top_k]
 
 
 # =============================================================================
@@ -365,7 +386,11 @@ def generate_answer(
     # --- Trường hợp 1: Không có context ---
     if not has_context or not reranked_docs:
         return {
-            "answer": "Không tìm thấy thông tin về câu hỏi này trong tài liệu hiện có.",
+            "answer": (
+                "Tôi không tìm thấy thông tin liên quan đến câu hỏi này trong tài liệu nội bộ hiện có. "
+                "Tài liệu hiện tại bao gồm: SLA P1, chính sách hoàn tiền, Access Control SOP, HR Leave Policy, và IT Helpdesk FAQ. "
+                "Nếu câu hỏi thuộc phạm vi trên, vui lòng liên hệ IT Helpdesk (ext. 9000) hoặc bộ phận có thẩm quyền để được hỗ trợ."
+            ),
             "sources": [],
             "citations": [],
         }
@@ -532,8 +557,12 @@ def rag_answer(
         print(f"\n[RAG] Sending {len(candidates)} chunks to generate_answer()")
 
     # --- Bước 3: Generate (dùng generate_answer để có abstain + citation logic) ---
-    has_context = len(candidates) > 0
-    result = generate_answer(query, candidates, has_context=has_context)
+    # Lọc candidates theo RELEVANCE_THRESHOLD để tránh gửi noise vào prompt
+    threshold = float(os.getenv("RELEVANCE_THRESHOLD", RELEVANCE_THRESHOLD))
+    filtered = [c for c in candidates if c.get("score", 1.0) >= threshold]
+    # Nếu không có candidate nào qua threshold → dùng top candidates (không abstain sai)
+    has_context = len(filtered) > 0
+    result = generate_answer(query, filtered if filtered else candidates, has_context=has_context)
 
     return {
         "query": query,

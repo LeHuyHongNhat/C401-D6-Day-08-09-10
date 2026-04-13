@@ -1,60 +1,63 @@
 # Scorecard Variant — Hybrid Retrieval (Sprint 3)
 
 **Date:** 2026-04-13  
-**Variant:** `retrieval_mode = "hybrid"` (Dense + BM25S + RRF k=60)  
-**Test set:** `data/test_questions.json` (10 câu mẫu)
+**Variant:** `retrieval_mode = "hybrid"` (Dense + BM25S + RRF k=60) + LLM rerank  
+**Test set:** `data/test_questions.json` (10 câu mẫu)  
+**Judge:** `gpt-4o-mini` LLM-as-Judge
 
 ---
 
-## Retrieval Results
+## Per-Question Results
 
-| ID | Câu hỏi (tóm tắt) | Dense | Hybrid |
-|----|-------------------|-------|--------|
-| q01 | SLA ticket P1 | HIT ✅ | HIT ✅ |
-| q02 | Hoàn tiền bao nhiêu ngày | HIT ✅ | HIT ✅ |
-| q03 | Phê duyệt Level 3 | HIT ✅ | HIT ✅ |
-| q04 | Sản phẩm kỹ thuật số hoàn tiền | HIT ✅ | HIT ✅ |
-| q05 | Tài khoản bị khóa sau mấy lần | HIT ✅ | HIT ✅ |
-| q06 | Escalation P1 | HIT ✅ | HIT ✅ |
-| q07 | Approval Matrix là tài liệu nào | HIT ✅ | HIT ✅ |
-| q08 | Remote tối đa mấy ngày/tuần | HIT ✅ | HIT ✅ |
-| q09 | ERR-403-AUTH (abstain) | ABSTAIN ✅ | ABSTAIN ✅ |
-| q10 | Hoàn tiền VIP khác không | HIT ✅ | HIT ✅ |
+| ID | Category | Faithful | Relevant | Recall | Complete | Config |
+|----|----------|----------|----------|--------|----------|--------|
+| q01 | SLA | 5 | 5 | 5 | 4 | baseline_dense |
+| q02 | Refund | 5 | 5 | 5 | 5 | baseline_dense |
+| q03 | Access Control | 5 | 5 | 5 | 5 | baseline_dense |
+| q04 | Refund | 5 | 5 | 5 | 5 | baseline_dense |
+| q05 | IT Helpdesk | 5 | 5 | 5 | 5 | baseline_dense |
+| q06 | SLA | 5 | 5 | 5 | 4 | baseline_dense |
+| q07 | Access Control | 5 | 5 | 5 | 4 | baseline_dense |
+| q08 | HR Policy | 5 | 5 | 5 | 5 | baseline_dense |
+| q09 | Insufficient Context | 1 | 1 | 3 | 2 | baseline_dense |
+| q10 | Refund | 1 | 1 | 5 | 1 | baseline_dense |
+| q01 | SLA | 5 | 5 | 5 | 5 | variant_hybrid |
+| q02 | Refund | 5 | 5 | 5 | 5 | variant_hybrid |
+| q03 | Access Control | 5 | 5 | 5 | 5 | variant_hybrid |
+| q04 | Refund | 5 | 5 | 5 | 5 | variant_hybrid |
+| q05 | IT Helpdesk | 5 | 5 | 5 | 5 | variant_hybrid |
+| q06 | SLA | 5 | 5 | 5 | 5 | variant_hybrid |
+| q07 | Access Control | 5 | 5 | 5 | 4 | variant_hybrid |
+| q08 | HR Policy | 5 | 5 | 5 | 5 | variant_hybrid |
+| q09 | Insufficient Context | 5 | 1 | 3 | 2 | variant_hybrid |
+| q10 | Refund | 5 | 1 | 5 | 1 | variant_hybrid |
 
-## Summary
+## A/B Summary
 
 | Metric | Baseline (Dense) | Variant (Hybrid) | Delta |
 |--------|-----------------|-----------------|-------|
-| HIT | 9/9 | 9/9 | 0 |
-| MISS | 0/9 | 0/9 | 0 |
-| Abstain Accuracy | 1/1 | 1/1 | 0 |
-| **Context Recall** | **100%** | **100%** | **0** |
+| Faithfulness | 4.20/5 | **5.00/5** | **+0.80** ✅ |
+| Answer Relevance | 4.20/5 | 4.20/5 | 0 |
+| Context Recall | 4.80/5 | 4.80/5 | 0 |
+| Completeness | 4.00/5 | **4.20/5** | **+0.20** ✅ |
 
 ## Config
 
 ```
 # Baseline
 retrieval_mode = "dense"
-top_k_search   = 10
-top_k_select   = 3
+top_k_search   = 10  (TOP_K_RETRIEVAL)
+top_k_select   = 3   (TOP_K_RERANK)
 use_rerank     = False
 
-# Variant 1 (chỉ đổi 1 biến)
-retrieval_mode = "hybrid"
-dense_weight   = 0.6
-sparse_weight  = 0.4
-RRF_K          = 60
+# Variant (chỉ đổi 2 biến)
+retrieval_mode = "hybrid"   # Dense + BM25S + RRF k=60
+use_rerank     = True       # LLM-as-reranker (gpt-4o-mini)
 ```
 
-## Analysis
+## Key Findings
 
-- **q07** (alias query: "Approval Matrix") là câu hưởng lợi nhất từ Hybrid: BM25S bắt được keyword alias đã inject vào chunk đầu tiên, Dense có thể bỏ lỡ nếu embedding space không gần.
-- **q09** (ERR-403-AUTH): cả hai mode đều abstain đúng — không có chunk nào vượt threshold.
-- Hybrid không làm kém bất kỳ câu nào so với Dense.
-
-## Conclusion
-
-Hybrid được chọn làm mode mặc định vì:
-1. Context Recall không giảm (100% → 100%)
-2. Bền vững hơn với alias/keyword query (q07)
-3. Chi phí tăng nhỏ (thêm BM25S lookup ~ms) so với lợi ích về độ tin cậy
+- **Faithfulness +0.80**: Cải thiện lớn nhất ở abstain cases (q09, q10). Hybrid xử lý "không có thông tin" đúng hơn — judge xác nhận abstain là faithful thay vì chấm thấp.
+- **Completeness +0.20**: q01, q06 — LLM rerank sắp xếp chunks cross-section đúng thứ tự ưu tiên, answer đầy đủ hơn.
+- **q07 (alias query)**: Cả hai đều HIT (4/5 completeness) — BM25S bắt alias inject đúng.
+- **Relevance không đổi**: q09/q10 abstain đúng nhưng judge vẫn chấm Relevance=1 vì answer không giải thích thêm.

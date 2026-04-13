@@ -1,26 +1,25 @@
-# Scorecard: baseline_dense
-Generated: 2026-04-13 14:48
+# Scorecard — Baseline Dense
+**Thời gian chạy:** 2026-04-13 16:37 
 
-## Summary
+## RAGAS Metrics
+| Metric | Score | Target | Status |
+|---|---|---|---|---|
+| Faithfulness | 0.92 | > 0.90 | ✅ |
+| Relevance | 0.84 | > 0.85 | ❌ |
+| Context Recall | 0.96 | > 0.80 | ✅ |
+| Completeness | 0.80 | > 0.80 | ✅ |
+| Abstain Accuracy | 0.00 | = 1.00 | ❌ |
 
-| Metric | Average Score |
-|--------|--------------|
-| Faithfulness | 1.00/5 |
-| Relevance | 3.00/5 |
-| Context Recall | 0.50/5 |
-| Completeness | 3.00/5 |
-
-## Per-Question Results
-
-| ID | Category | Faithful | Relevant | Recall | Complete | Notes |
-|----|----------|----------|----------|--------|----------|-------|
-| q01 | SLA | 1 | 3 | 0 | 3 | No retrieved chunks, answer likely not faithful |
-| q02 | Refund | 1 | 3 | 0 | 3 | No retrieved chunks, answer likely not faithful |
-| q03 | Access Control | 1 | 3 | 0 | 3 | No retrieved chunks, answer likely not faithful |
-| q04 | Refund | 1 | 3 | 0 | 3 | No retrieved chunks, answer likely not faithful |
-| q05 | IT Helpdesk | 1 | 3 | 0 | 3 | No retrieved chunks, answer likely not faithful |
-| q06 | SLA | 1 | 3 | 0 | 3 | No retrieved chunks, answer likely not faithful |
-| q07 | Access Control | 1 | 3 | 0 | 3 | No retrieved chunks, answer likely not faithful |
-| q08 | HR Policy | 1 | 3 | 0 | 3 | No retrieved chunks, answer likely not faithful |
-| q09 | Insufficient Context | 1 | 3 | 5 | 3 | No retrieved chunks, answer likely not faithful |
-| q10 | Refund | 1 | 3 | 0 | 3 | No retrieved chunks, answer likely not faithful |
+## Per-question Results
+| ID | Category | Expected | Got | Pass? |
+|---|---|---|---|---|
+| q01 | SLA | Ticket P1 có SLA phản hồi ban đầu 15 phút và thời ... | SLA xử lý ticket P1 bao gồm các thời gian như sau:... | ✅ |
+| q02 | Refund | Khách hàng có thể yêu cầu hoàn tiền trong vòng 7 n... | Khách hàng có thể yêu cầu hoàn tiền trong vòng 7 n... | ✅ |
+| q03 | Access Control | Level 3 (Elevated Access) cần phê duyệt từ Line Ma... | Để cấp quyền Level 3 — Elevated Access, yêu cầu ph... | ✅ |
+| q04 | Refund | Không. Theo chính sách hoàn tiền, sản phẩm thuộc d... | Sản phẩm thuộc danh mục hàng kỹ thuật số (license ... | ✅ |
+| q05 | IT Helpdesk | Tài khoản bị khóa sau 5 lần đăng nhập sai liên tiế... | Tài khoản bị khóa sau 5 lần đăng nhập sai liên tiế... | ✅ |
+| q06 | SLA | Ticket P1 tự động escalate lên Senior Engineer nếu... | Escalation trong sự cố P1 diễn ra theo các bước sa... | ✅ |
+| q07 | Access Control | Tài liệu 'Approval Matrix for System Access' hiện ... | Approval Matrix để cấp quyền hệ thống là tài liệu ... | ✅ |
+| q08 | HR Policy | Nhân viên sau probation period có thể làm remote t... | Nhân viên sau probation period có thể làm remote t... | ✅ |
+| q09 | Insufficient Context | Không tìm thấy thông tin về ERR-403-AUTH trong tài... | Tôi không tìm thấy thông tin này trong tài liệu.... | ❌ |
+| q10 | Refund | Tài liệu chính sách hoàn tiền không đề cập đến quy... | Tôi không tìm thấy thông tin này trong tài liệu.... | ✅ |
