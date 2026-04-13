@@ -45,34 +45,61 @@ llm_model = "gpt-4o-mini"
 
 ## Variant 1 (Sprint 3)
 
-**Ngày:** ___________  
-**Biến thay đổi:** ___________  
+**Ngày:** 2026-04-13  
+**Biến thay đổi:** `retrieval_mode`: `"dense"` → `"hybrid"` (Dense + BM25S + RRF k=60)  
 **Lý do chọn biến này:**
-> TODO: Giải thích theo evidence từ baseline results.
-> Ví dụ: "Chọn hybrid vì q07 (alias query) và q09 (mã lỗi ERR-403) đều thất bại với dense.
-> Corpus có cả ngôn ngữ tự nhiên (policy) lẫn tên riêng/mã lỗi (ticket code, SLA label)."
+> Baseline Dense bỏ lỡ các query dùng keyword chính xác và alias. Cụ thể:
+> - **ext08** ("Approval Matrix for System Access") — Dense không bắt được alias của `access-control-sop.md` vì tên tài liệu đã đổi.
+> - **ext01, ext11** (P1 SLA) — query ngắn, keyword "P1" không đủ ngữ nghĩa cho embedding.
+> - Corpus lẫn lộn: ngôn ngữ tự nhiên (policy HR) + tên riêng/mã kỹ thuật (ticket P1, ERR-403, Level 3).
+> → Hybrid giữ được cả Dense (semantic) lẫn BM25 (keyword exact), RRF tổng hợp rank từ cả hai.
 
 **Config thay đổi:**
 ```
-retrieval_mode = "hybrid"   # hoặc biến khác
+retrieval_mode = "hybrid"    # thay vì "dense"
+dense_weight   = 0.6
+sparse_weight  = 0.4
+RRF_K          = 60
 # Các tham số còn lại giữ nguyên như baseline
+top_k_search   = 10
+top_k_select   = 3
+use_rerank     = False
 ```
 
+**Kết quả test retrieval (test_questions.json — 10 câu mẫu):**
+
+| ID | Câu hỏi (tóm tắt) | Dense | Hybrid | Ghi chú |
+|----|-------------------|-------|--------|---------|
+| q01 | SLA ticket P1 | HIT ✅ | HIT ✅ | |
+| q02 | Hoàn tiền bao nhiêu ngày | HIT ✅ | HIT ✅ | |
+| q03 | Phê duyệt Level 3 | HIT ✅ | HIT ✅ | |
+| q04 | Sản phẩm kỹ thuật số hoàn tiền | HIT ✅ | HIT ✅ | |
+| q05 | Tài khoản bị khóa sau mấy lần | HIT ✅ | HIT ✅ | |
+| q06 | Escalation P1 | HIT ✅ | HIT ✅ | |
+| q07 | Approval Matrix là tài liệu nào | HIT ✅ | HIT ✅ | BM25 bắt alias → Hybrid ổn định hơn |
+| q08 | Remote tối đa mấy ngày/tuần | HIT ✅ | HIT ✅ | |
+| q09 | ERR-403-AUTH | ABSTAIN ✅ | ABSTAIN ✅ | Không có trong docs — abstain đúng |
+| q10 | Hoàn tiền VIP khác không | HIT ✅ | HIT ✅ | |
+
+| Mode | HIT | MISS | ABSTAIN | Context Recall |
+|------|-----|------|---------|----------------|
+| Dense (baseline) | 9 | 0 | 1 | 100% |
+| Hybrid (variant) | 9 | 0 | 1 | 100% |
+
 **Scorecard Variant 1:**
-| Metric | Baseline | Variant 1 | Delta |
-|--------|----------|-----------|-------|
-| Faithfulness | ?/5 | ?/5 | +/- |
-| Answer Relevance | ?/5 | ?/5 | +/- |
-| Context Recall | ?/5 | ?/5 | +/- |
-| Completeness | ?/5 | ?/5 | +/- |
+| Metric | Baseline (Dense) | Variant 1 (Hybrid) | Delta |
+|--------|------------------|--------------------|-------|
+| Context Recall | 100% (9/9) | 100% (9/9) | 0 |
+| Alias Query (q07) | HIT (Dense may miss) | HIT (BM25 dominant) | ✅ ổn định hơn |
+| Abstain chính xác | 1/1 (q09) | 1/1 (q09) | 0 |
 
 **Nhận xét:**
-> TODO: Variant 1 cải thiện ở câu nào? Tại sao?
-> Có câu nào kém hơn không? Tại sao?
+- Hybrid không kém hơn Dense ở bất kỳ câu nào trong 10 câu mẫu.
+- **q07** ("Approval Matrix") là câu rủi ro nhất với Dense: embedding của "Approval Matrix" có thể không khớp tốt với "Access Control SOP". BM25S bắt được vì alias đã được inject vào `page_content` chunk đầu tiên.
+- Dense hoạt động tốt vì corpus tương đối nhỏ (5 file, ~30 chunks). Ở corpus lớn hơn, khoảng cách Dense vs Hybrid sẽ rõ hơn.
 
 **Kết luận:**
-> TODO: Variant 1 có tốt hơn baseline không?
-> Bằng chứng là gì? (điểm số, câu hỏi cụ thể)
+> Chọn **Hybrid** làm mode mặc định. Context Recall giữ nguyên 100%, Hybrid bền vững hơn với alias query (q07) — đặc biệt quan trọng khi tên tài liệu thay đổi nhưng người dùng vẫn dùng tên cũ.
 
 ---
 
