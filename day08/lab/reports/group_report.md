@@ -11,8 +11,14 @@ Hệ thống hoạt động theo pipeline: Đọc dữ liệu văn bản thô ->
 - **Hybrid Search vs Dense only (Khải)**: (Đang chờ kết quả A/B Test ở Sprint 3).
 - **Threshold abstain = 0.35 (Nhật)**: Đảm bảo khi tìm kiếm không ra context mong đợi (Ví dụ mã lỗi không xuất hiện), ứng dụng sẽ tự động nói "Không biết" thay vì tuỳ ý "Hallucinate" ra thông tin sai.
 
-## 3. Kết quả RAGAS
-*(Sẽ được cập nhật sau khi chạy `eval.py` ở Sprint 4 lấy điểm số A/B)*
+## 3. Kết quả RAGAS (Baseline Dense)
+Trong phiên chạy Baseline bằng Dense Search, hệ thống cho các điểm số trung bình như sau:
+- **Faithfulness:** 1.00/5
+- **Answer Relevance:** 3.00/5
+- **Context Recall:** 0.50/5
+- **Completeness:** 3.00/5
+
+*(Nhận xét sơ bộ: Hệ thống chưa lấy được context cần thiết [Recall=0.5] nên mức độ tin cậy [Faithfulness=1.00] đang rất thấp. Variant hướng đến giải quyết Context Recall)*
 
 ## 4. Phân tích câu hỏi đặc biệt
 *(Sẽ được cập nhật sau 17:00 khi có `grading_questions.json`)*
