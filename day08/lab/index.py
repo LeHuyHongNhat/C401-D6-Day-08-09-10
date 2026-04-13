@@ -124,7 +124,7 @@ def get_embeddings_fn():
     openai_key = os.getenv("OPENAI_API_KEY")
     if openai_key and not openai_key.startswith("sk-..."):
         from langchain_openai import OpenAIEmbeddings
-        print("[Embedding] Sử dụng OpenAIEmbeddings.")
+        print("[Embedding] Using OpenAIEmbeddings.")
         return OpenAIEmbeddings(
             model=os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small"),
             openai_api_key=openai_key
@@ -133,13 +133,13 @@ def get_embeddings_fn():
     google_key = os.getenv("GOOGLE_API_KEY")
     if google_key:
         from langchain_google_genai import GoogleGenerativeAIEmbeddings
-        print("[Embedding] Sử dụng GoogleGenerativeAIEmbeddings.")
+        print("[Embedding] Using GoogleGenerativeAIEmbeddings.")
         return GoogleGenerativeAIEmbeddings(
             model=os.getenv("GEMINI_EMBEDDING_MODEL", "models/text-embedding-004"),
             google_api_key=google_key
         )
     
-    raise ValueError("Không tìm thấy API Key hợp lệ cho OpenAI hoặc Google trong file .env")
+    raise ValueError("No valid API Key found for OpenAI or Google in .env")
 
 def build_vector_index(documents: List[Document]) -> Chroma:
     """

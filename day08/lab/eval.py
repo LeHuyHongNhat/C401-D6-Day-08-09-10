@@ -28,7 +28,17 @@ import os
 
 from datasets import Dataset
 from ragas import evaluate
-from ragas.metrics import faithfulness, answer_relevancy, context_precision, context_recall as ragas_context_recall
+try:
+    # ragas >= 0.2: dùng collections path
+    from ragas.metrics.collections import faithfulness, answer_relevancy, context_precision, context_recall as ragas_context_recall
+except ImportError:
+    from ragas.metrics import faithfulness, answer_relevancy, context_precision, context_recall as ragas_context_recall
+try:
+    from ragas.llms import llm_factory
+    from ragas.embeddings import embedding_factory
+    _RAGAS_MODERN = True
+except ImportError:
+    _RAGAS_MODERN = False
 
 # =============================================================================
 # CẤU HÌNH
@@ -301,15 +311,32 @@ def compute_ragas_scores(results: List[Dict[str, Any]]) -> Dict[str, Any]:
     )
 
     try:
-        scores = evaluate(
-            dataset,
-            metrics=[
-                faithfulness,
-                answer_relevancy,
-                context_precision,
-                ragas_context_recall,
-            ],
-        )
+        from openai import OpenAI
+        openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        model_name = os.getenv("LLM_MODEL", "gpt-4o-mini")
+        emb_model   = os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
+
+        # Khởi tạo metric class mới mỗi lần (không dùng deepcopy — fail với module refs)
+        try:
+            from ragas.metrics.collections import (
+                Faithfulness, AnswerRelevancy, ContextPrecision, ContextRecall,
+            )
+        except ImportError:
+            from ragas.metrics import (
+                Faithfulness, AnswerRelevancy, ContextPrecision, ContextRecall,
+            )
+        metrics = [Faithfulness(), AnswerRelevancy(), ContextPrecision(), ContextRecall()]
+
+        eval_kwargs: dict = {"dataset": dataset, "metrics": metrics}
+
+        if _RAGAS_MODERN:
+            # llm_factory + embedding_factory (ragas 0.4+)
+            eval_kwargs["llm"] = llm_factory(model_name, client=openai_client)
+            eval_kwargs["embeddings"] = embedding_factory(
+                "openai", model=emb_model, client=openai_client
+            )
+
+        scores = evaluate(**eval_kwargs)
         return {
             "faithfulness": round(float(scores["faithfulness"]), 4),
             "answer_relevancy": round(float(scores["answer_relevancy"]), 4),
@@ -324,6 +351,8 @@ def compute_ragas_scores(results: List[Dict[str, Any]]) -> Dict[str, Any]:
             "context_recall": None,
             "notes": f"RAGAS evaluation failed: {e}",
         }
+
+
 
 
 #thanh
@@ -619,10 +648,150 @@ def generate_scorecard_summary(results: List[Dict], label: str) -> str:
     return md
 
 # =============================================================================
+# GRADING RUN FORMATTER — Thanh (Sprint 3)
+# Format bắt buộc theo SCORING.md: JSON array [...], mỗi entry có đủ
+# id, question, answer, sources, chunks_retrieved, retrieval_mode, timestamp.
+# Sai format → câu đó không được tính điểm.
+# =============================================================================
+
+LOGS_DIR = Path(__file__).parent / "logs"
+
+
+#thanh
+def save_grading_log(
+    results: List[Dict[str, Any]],
+    output_path: str = "logs/grading_run.json",
+) -> None:
+    """
+    Export kết quả ra đúng format nộp bài — phải là array of objects theo SCORING.md.
+
+    Format bắt buộc cho mỗi entry:
+    {
+        "id":               "gq01",
+        "question":         "...",
+        "answer":           "...",
+        "sources":          ["support/sla-p1-2026.pdf"],
+        "chunks_retrieved": 3,
+        "retrieval_mode":   "hybrid",
+        "timestamp":        "2026-04-12T17:23:45"
+    }
+
+    Args:
+        results: Output từ run_scorecard() — list of row dicts.
+        output_path: Đường dẫn file JSON đầu ra (mặc định: logs/grading_run.json).
+    """
+    LOGS_DIR.mkdir(parents=True, exist_ok=True)
+
+    # Resolve path — hỗ trợ cả relative và absolute
+    out = Path(output_path)
+    if not out.is_absolute():
+        out = Path(__file__).parent / out
+
+    log = []
+    for r in results:
+        log.append({
+            "id": r.get("id", ""),
+            "question": r.get("query", r.get("question", "")),
+            "answer": r.get("answer", ""),
+            "sources": r.get("sources", []),
+            "chunks_retrieved": len(r.get("chunks_used", [])),
+            "retrieval_mode": r.get("config_label", "hybrid").replace("variant_", "").replace("baseline_", ""),
+            "timestamp": datetime.now().isoformat(),
+        })
+
+    with open(out, "w", encoding="utf-8") as f:
+        json.dump(log, f, ensure_ascii=False, indent=2)
+
+    print(f"✅ Grading log saved to {out} ({len(log)} entries)")
+    print(f"   Format: JSON array, mỗi entry có: id, question, answer, sources, chunks_retrieved, retrieval_mode, timestamp")
+
+
+#thanh
+def run_grading_eval(
+    grading_path: str = None,
+    mode: str = "hybrid",
+) -> List[Dict[str, Any]]:
+    """
+    Orchestrate grading run lúc 17:00:
+    1. Load grading_questions.json
+    2. Chạy pipeline với config tốt nhất (hybrid)
+    3. Lưu ra logs/grading_run.json
+    4. Lưu scorecard variant
+
+    Args:
+        grading_path: Đường dẫn tới grading_questions.json (mặc định: data/grading_questions.json)
+        mode: retrieval mode — "dense" hoặc "hybrid" (mặc định: hybrid)
+
+    Usage (17:00):
+        python eval.py --grading
+        hoặc:
+        python -c "from eval import run_grading_eval; run_grading_eval()"
+    """
+    if grading_path is None:
+        grading_path = str(GRADING_QUESTIONS_PATH)
+
+    gpath = Path(grading_path)
+    if not gpath.exists():
+        print(f"❌ Không tìm thấy {gpath}")
+        print(f"   Đợi grading_questions.json được public lúc 17:00, tải về đặt vào data/")
+        return []
+
+    with open(gpath, "r", encoding="utf-8") as f:
+        grading_questions = json.load(f)
+
+    print(f"\n{'='*60}")
+    print(f"🎯 GRADING RUN — {len(grading_questions)} câu hỏi")
+    print(f"   Mode: {mode} | Thời gian: {datetime.now().strftime('%H:%M:%S')}")
+    print(f"{'='*60}")
+
+    config = {
+        "retrieval_mode": mode,
+        "top_k_search": 10,
+        "top_k_select": 3,
+        "label": f"grading_{mode}",
+    }
+
+    results = run_scorecard(
+        config=config,
+        test_questions=grading_questions,
+        verbose=True,
+    )
+
+    # Lưu grading log
+    save_grading_log(results, "logs/grading_run.json")
+
+    # Lưu scorecard
+    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    grading_md = generate_scorecard_summary(results, f"grading_{mode}")
+    scorecard_path = RESULTS_DIR / "scorecard_grading.md"
+    scorecard_path.write_text(grading_md, encoding="utf-8")
+    print(f"📊 Scorecard grading lưu tại: {scorecard_path}")
+
+    return results
+
+
+# =============================================================================
 # MAIN — Chạy evaluation
 # =============================================================================
 
 if __name__ == "__main__":
+    import sys
+
+    # --grading CLI: chạy grading run trực tiếp (dùng lúc 17:00)
+    # Usage: python eval.py --grading
+    #        python eval.py --grading --mode hybrid
+    #        python eval.py --input tests/grading_questions.json --mode hybrid
+    if "--grading" in sys.argv or "--input" in sys.argv:
+        mode = "hybrid"
+        grading_path = None
+        for i, arg in enumerate(sys.argv):
+            if arg == "--mode" and i + 1 < len(sys.argv):
+                mode = sys.argv[i + 1]
+            if arg == "--input" and i + 1 < len(sys.argv):
+                grading_path = sys.argv[i + 1]
+        run_grading_eval(grading_path=grading_path, mode=mode)
+        sys.exit(0)
+
     print("=" * 60)
     print("Sprint 4: Evaluation & Scorecard")
     print("=" * 60)
@@ -674,7 +843,6 @@ if __name__ == "__main__":
         baseline_results = []
 
     # --- Chạy Variant (sau khi Sprint 3 hoàn thành) ---
-    # TODO Sprint 4: Uncomment sau khi implement variant trong rag_answer.py
     print("\n--- Chạy Variant ---")
     variant_results = run_scorecard(
         config=VARIANT_CONFIG,
@@ -684,8 +852,20 @@ if __name__ == "__main__":
     variant_md = generate_scorecard_summary(variant_results, VARIANT_CONFIG["label"])
     (RESULTS_DIR / f"scorecard_variant_{data_source}.md").write_text(variant_md, encoding="utf-8")
 
+    #thanh — RAGAS + abstain cho variant
+    if variant_results:
+        ragas_variant = compute_ragas_scores(variant_results)
+        abstain_variant = compute_abstain_accuracy(variant_results)
+        print("\nRAGAS Metrics (Variant):")
+        for metric_name, metric_value in ragas_variant.items():
+            print(f"  {metric_name}: {metric_value}")
+        print(f"Abstain Accuracy (Variant): {abstain_variant}")
+
+    #thanh — Lưu grading log formatter output cho variant (test_questions)
+    if variant_results:
+        save_grading_log(variant_results, f"logs/grading_run_{data_source}.json")
+
     # --- A/B Comparison ---
-    # TODO Sprint 4: Uncomment sau khi có cả baseline và variant
     if baseline_results and variant_results:
         compare_ab(
             baseline_results,
@@ -700,3 +880,5 @@ if __name__ == "__main__":
     print("  4. Chạy run_scorecard(VARIANT_CONFIG)")
     print("  5. Gọi compare_ab() để thấy delta")
     print("  6. Cập nhật docs/tuning-log.md với kết quả và nhận xét")
+    print("\n  📌 Lúc 17:00 — chạy: python eval.py --grading")
+

@@ -16,7 +16,7 @@ load_dotenv()
 
 TOP_K_SEARCH        = int(os.getenv("TOP_K_RETRIEVAL", 10))
 TOP_K_SELECT        = int(os.getenv("TOP_K_RERANK", 5))
-RELEVANCE_THRESHOLD = float(os.getenv("RELEVANCE_THRESHOLD", 0.35))
+RELEVANCE_THRESHOLD = float(os.getenv("RELEVANCE_THRESHOLD", 0.20))
 LLM_MODEL           = os.getenv("OPENAI_CHAT_MODEL", os.getenv("LLM_MODEL", "gpt-4o-mini"))
 CHROMA_PERSIST_DIR  = os.getenv("CHROMA_PERSIST_DIR", "./data/chroma_db")
 EMBEDDING_MODEL     = os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
@@ -53,17 +53,25 @@ Dưới đây là các đoạn thông tin được trích xuất từ tài liệ
 
 def retrieve_dense(query: str, top_k: int = TOP_K_SEARCH) -> List[Dict[str, Any]]:
     """Dense retrieval từ ChromaDB dùng embedding similarity."""
-    from index import get_embeddings_fn, CHROMA_PERSIST_DIR
+    from index import get_embeddings_fn
     from langchain_community.vectorstores import Chroma
+    import pathlib
 
     embedding_fn = get_embeddings_fn()
+    # Resolve path tương đối so với thư mục của script, không phải CWD
+    chroma_dir = os.getenv("CHROMA_PERSIST_DIR", None)
+    if chroma_dir is None or not os.path.isabs(chroma_dir):
+        chroma_dir = str(pathlib.Path(__file__).parent / "data" / "chroma_db")
+
     vectorstore = Chroma(
-        persist_directory=CHROMA_PERSIST_DIR,
+        persist_directory=chroma_dir,
         embedding_function=embedding_fn,
     )
     results = vectorstore.similarity_search_with_score(query, k=top_k)
+    # Chú ý: similarity_search_with_score trả về L2 distance (0=giống nhau, lớn=xa)
+    # Cần normalize về [0,1]: score = 1 / (1 + distance) giữ nguyên thứ tự và luôn dương
     return [
-        {"text": doc.page_content, "metadata": doc.metadata, "score": 1.0 - distance}
+        {"text": doc.page_content, "metadata": doc.metadata, "score": 1.0 / (1.0 + distance)}
         for doc, distance in results
     ]
 
@@ -76,8 +84,13 @@ def retrieve_sparse(query: str, top_k: int = TOP_K_SEARCH) -> List[Dict[str, Any
     """Sparse retrieval dùng BM25S — mạnh với keyword, alias, mã lỗi."""
     import pickle
     import bm25s
+    import pathlib
 
-    bm25_dir = os.getenv("BM25_INDEX_DIR", "./data/bm25_index")
+    # Resolve path tương đối so với thư mục của script, không phải CWD
+    bm25_dir = os.getenv("BM25_INDEX_DIR", None)
+    if bm25_dir is None or not os.path.isabs(bm25_dir):
+        bm25_dir = str(pathlib.Path(__file__).parent / "data" / "bm25_index")
+
     with open(f"{bm25_dir}/bm25.pkl", "rb") as f:
         retriever = pickle.load(f)
     with open(f"{bm25_dir}/docs.pkl", "rb") as f:
@@ -339,10 +352,18 @@ def rag_answer(
         candidates = candidates[:top_k_select]
 
     # Bước 3: Lọc theo threshold, generate
+    # Lưu ý: Threshold chỉ áp dụng cho Dense (score = cosine similarity [0,1]).
+    # Hybrid/Sparse: RRF score rất nhỏ (~0.01) không so được với threshold này.
+    # → Với hybrid/sparse, trust retrieval ranking; chỉ abstain nếu không có kết quả.
     threshold = float(os.getenv("RELEVANCE_THRESHOLD", RELEVANCE_THRESHOLD))
-    filtered  = [c for c in candidates if c.get("score", 1.0) >= threshold]
+    if retrieval_mode == "dense":
+        filtered = [c for c in candidates if c.get("score", 1.0) >= threshold]
+    else:
+        # Hybrid/Sparse: lấy tất cả top-k candidates (đã sort theo RRF rank)
+        filtered = candidates
     has_context = len(filtered) > 0
     result = generate_answer(query, filtered if filtered else candidates, has_context=has_context)
+
 
     return {
         "query": query,
