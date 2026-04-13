@@ -4,12 +4,12 @@
 **Thành viên:**
 | Tên | Vai trò | Email |
 |-----|---------|-------|
-| Lê Huy Hồng Nhật | Tech Lead | nhat@example.asia |
-| Nguyễn Quốc Khánh | Retrieval Owner | khanh@example.asia |
-| Lê Nguyễn Quang Khải | Retrieval Owner | khai@example.asia |
-| Võ Văn Tấn | Eval Owner | tan@example.asia |
-| Đào Công Thành | Eval Owner | thanh@example.asia |
-| Nguyễn Quế Sơn | Documentation Owner | son@example.asia |
+| Lê Huy Hồng Nhật | Tech Lead | nhat050403@gmail.com |
+| Nguyễn Quốc Khánh | Retrieval Owner | khanhnq352005@gmail.com |
+| Lê Nguyễn Quang Khải | Retrieval Owner | tuankhaidx2003@gmail.com |
+| Võ Văn Tấn | Eval Owner | tana2k53nvt@gmail.com |
+| Đào Công Thành | Eval Owner | lcthanh.htvn@gmail.com |
+| Nguyễn Quế Sơn | Documentation Owner | sonnguyenque5@gmail.com |
 
 **Ngày nộp:** 2026-04-13  
 **Repo:** [https://github.com/LeHuyHongNhat/C401-D6-Day-08-09-10](https://github.com/LeHuyHongNhat/C401-D6-Day-08-09-10)  
@@ -100,7 +100,7 @@ Variant **tốt hơn rõ rệt** ở khả năng bảo đảm tính trung thực
 | Sơn | Documentation (Arch, Log, Report), Web UI Demo | 1-4 |
 
 **Điều nhóm làm tốt:**
-Phối hợp nhịp nhàng giữa các Sprint, đặc biệt là việc Documentation Owner (Sơn) luôn đi sát tiến độ của Dev để cập nhật Tuning Log kịp thời, tránh sai lệch số liệu cuối dự án.
+Sự phối hợp chặt chẽ giữa các thành viên giúp pipeline được hoàn thiện đúng tiến độ. Đặc biệt, việc duy trì hệ thống tài liệu và Tuning Log song song với quá trình code đã giúp nhóm không bị nhầm lẫn số liệu và có cái nhìn rõ ràng về hiệu quả của từng thay đổi kỹ thuật.
 
 **Điều nhóm làm chưa tốt:**
 Quá phụ thuộc vào API OpenAI nên đôi khi gặp độ trễ lớn khi chạy Eval tập trung nhiều câu hỏi.
