@@ -11,12 +11,14 @@
 **Config:**
 ```
 retrieval_mode = "dense"
-chunk_size = _____ tokens
-overlap = _____ tokens
+chunking_strategy = "semantic split"
 top_k_search = 10
 top_k_select = 3
 use_rerank = False
-llm_model = _____
+threshold = 0.35
+llm_model = "gpt-4o-mini"
+
+**System Prompt:** "Chỉ trả lời dựa trên CONTEXT được cung cấp. Nếu không tìm thấy thông tin → trả lời: 'Không tìm thấy thông tin...'. Luôn trích dẫn nguồn."
 ```
 
 **Scorecard Baseline:**
