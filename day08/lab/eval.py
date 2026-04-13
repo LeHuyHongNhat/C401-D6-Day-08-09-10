@@ -37,6 +37,9 @@ from ragas.metrics import faithfulness, answer_relevancy, context_precision, con
 TEST_QUESTIONS_PATH = Path(__file__).parent / "data" / "test_questions.json"
 GRADING_QUESTIONS_PATH = Path(__file__).parent / "data" / "grading_questions.json"
 RESULTS_DIR = Path(__file__).parent / "results"
+LOGS_DIR = Path(__file__).parent / "logs"
+# Log pipeline (answer, sources, ...) — cùng format với logs/grading_run.json (SCORING.md)
+TEST_QUESTIONS_PIPELINE_LOG = LOGS_DIR / "test_questions_run.json"
 
 # Cấu hình baseline (Sprint 2)
 BASELINE_CONFIG = {
@@ -354,6 +357,60 @@ def compute_abstain_accuracy(results: List[Dict[str, Any]]) -> float:
     return round(correct / len(abstain_cases), 4)
 
 # =============================================================================
+# PIPELINE LOG (grading_run.json format — SCORING.md)
+# =============================================================================
+
+def row_to_pipeline_log_entry(row: Dict[str, Any], config: Dict[str, Any]) -> Dict[str, Any]:
+    """Một dòng log giống format bắt buộc cho grading_run.json."""
+    chunks = row.get("chunks_used") or []
+    return {
+        "id": row["id"],
+        "question": row["query"],
+        "answer": row.get("answer", ""),
+        "sources": row.get("sources") or [],
+        "chunks_retrieved": len(chunks),
+        "retrieval_mode": config.get("retrieval_mode", "dense"),
+        "timestamp": row.get("logged_at", datetime.now().isoformat()),
+    }
+
+
+def write_test_questions_pipeline_log(
+    baseline_results: List[Dict[str, Any]],
+    variant_results: List[Dict[str, Any]],
+    baseline_config: Dict[str, Any],
+    variant_config: Dict[str, Any],
+    dataset_path: Path,
+) -> Path:
+    """Ghi logs/test_questions_run.json — hai lần chạy baseline + variant, cùng schema từng dòng như grading_run."""
+    LOGS_DIR.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "dataset_file": dataset_path.name,
+        "generated_at": datetime.now().isoformat(),
+        "runs": [
+            {
+                "label": baseline_config.get("label", "baseline"),
+                "config": {k: v for k, v in baseline_config.items() if k != "label"},
+                "entries": [
+                    row_to_pipeline_log_entry(r, baseline_config) for r in baseline_results
+                ],
+            },
+            {
+                "label": variant_config.get("label", "variant"),
+                "config": {k: v for k, v in variant_config.items() if k != "label"},
+                "entries": [
+                    row_to_pipeline_log_entry(r, variant_config) for r in variant_results
+                ],
+            },
+        ],
+    }
+    TEST_QUESTIONS_PIPELINE_LOG.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    return TEST_QUESTIONS_PIPELINE_LOG
+
+
+# =============================================================================
 # SCORECARD RUNNER
 # =============================================================================
 
@@ -431,11 +488,13 @@ def run_scorecard(
         recall = score_context_recall(chunks_used, expected_sources)
         complete = score_completeness(query, answer, expected_answer, grading_criteria)
 
+        logged_at = datetime.now().isoformat()
         row = {
             "id": question_id,
             "category": category,
             "query": query,
             "answer": answer,
+            "logged_at": logged_at,
             "expected_answer": expected_answer,
             "expected_sources": expected_sources, #thanh
             "sources": result.get("sources", []) if "result" in locals() and isinstance(result, dict) else [], #thanh
@@ -692,6 +751,17 @@ if __name__ == "__main__":
             variant_results,
             output_csv=f"ab_comparison_{data_source}.csv"
         )
+
+    # Log pipeline (cùng format grading_run.json, cho test_questions)
+    if baseline_results and variant_results and data_source == "test_questions":
+        log_path = write_test_questions_pipeline_log(
+            baseline_results,
+            variant_results,
+            BASELINE_CONFIG,
+            VARIANT_CONFIG,
+            TEST_QUESTIONS_PATH,
+        )
+        print(f"\nPipeline log (test_questions) lưu tại: {log_path}")
 
     print("\n\nViệc cần làm Sprint 4:")
     print("  1. Hoàn thành Sprint 2 + 3 trước")
