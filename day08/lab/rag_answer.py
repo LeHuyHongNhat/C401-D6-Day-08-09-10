@@ -22,6 +22,7 @@ Definition of Done Sprint 3:
 """
 
 import os
+from pathlib import Path
 from typing import List, Dict, Any, Optional, Tuple
 from dotenv import load_dotenv
 
@@ -83,35 +84,43 @@ def retrieve_dense(query: str, top_k: int = TOP_K_SEARCH) -> List[Dict[str, Any]
 
 def retrieve_sparse(query: str, top_k: int = TOP_K_SEARCH) -> List[Dict[str, Any]]:
     """
-    Sparse retrieval: tìm kiếm theo keyword (BM25).
-
-    Mạnh ở: exact term, mã lỗi, tên riêng (ví dụ: "ERR-403", "P1", "refund")
-    Hay hụt: câu hỏi paraphrase, đồng nghĩa
-
-    TODO Sprint 3 (nếu chọn hybrid):
-    1. Cài rank_bm25: pip install rank-bm25
-    2. Load tất cả chunks từ ChromaDB (hoặc rebuild từ docs)
-    3. Tokenize và tạo BM25Index
-    4. Query và trả về top_k kết quả
-
-    Gợi ý:
-        from rank_bm25 import BM25Okapi
-        corpus = [chunk["text"] for chunk in all_chunks]
-        tokenized_corpus = [doc.lower().split() for doc in corpus]
-        bm25 = BM25Okapi(tokenized_corpus)
-        tokenized_query = query.lower().split()
-        scores = bm25.get_scores(tokenized_query)
-        top_indices = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)[:top_k]
+    Sparse retrieval: tìm kiếm theo keyword (BM25S).
     """
-    # TODO Sprint 3: Implement BM25 search
-    # Tạm thời return empty list
-    print("[retrieve_sparse] Chưa implement — Sprint 3")
-    return []
+    import bm25s
+    import pickle
+    from index import BM25_INDEX_DIR
+    
+    index_dir = Path(BM25_INDEX_DIR)
+    
+    # Load retriever and documents (from pickle as saved in index.py)
+    try:
+        with open(index_dir / "bm25.pkl", "rb") as f:
+            retriever = pickle.load(f)
+        with open(index_dir / "docs.pkl", "rb") as f:
+            documents = pickle.load(f)
+    except FileNotFoundError:
+        print(f"[Error] BM25 Index not found at {index_dir}. Please run index.py first.")
+        return []
 
+    # Tokenize query
+    tokenized_query = bm25s.tokenize(query)
+    
+    # Search
+    # bm25s.retrieve returns indices of the corpus if we indexed tokens
+    results, scores = retriever.retrieve(tokenized_query, k=top_k)
+    
+    formatted_results = []
+    for i in range(len(results[0])):
+        idx = results[0][i]
+        doc = documents[idx]
+        formatted_results.append({
+            "text": doc.page_content,
+            "metadata": doc.metadata,
+            "score": float(scores[0][i])
+        })
+        
+    return formatted_results
 
-# =============================================================================
-# RETRIEVAL — HYBRID (Dense + Sparse với Reciprocal Rank Fusion)
-# =============================================================================
 
 def retrieve_hybrid(
     query: str,
@@ -121,36 +130,45 @@ def retrieve_hybrid(
 ) -> List[Dict[str, Any]]:
     """
     Hybrid retrieval: kết hợp dense và sparse bằng Reciprocal Rank Fusion (RRF).
-
-    Mạnh ở: giữ được cả nghĩa (dense) lẫn keyword chính xác (sparse)
-    Phù hợp khi: corpus lẫn lộn ngôn ngữ tự nhiên và tên riêng/mã lỗi/điều khoản
-
-    Args:
-        dense_weight: Trọng số cho dense score (0-1)
-        sparse_weight: Trọng số cho sparse score (0-1)
-
-    TODO Sprint 3 (nếu chọn hybrid):
-    1. Chạy retrieve_dense() → dense_results
-    2. Chạy retrieve_sparse() → sparse_results
-    3. Merge bằng RRF:
-       RRF_score(doc) = dense_weight * (1 / (60 + dense_rank)) +
-                        sparse_weight * (1 / (60 + sparse_rank))
-       60 là hằng số RRF tiêu chuẩn
-    4. Sort theo RRF score giảm dần, trả về top_k
-
-    Khi nào dùng hybrid (từ slide):
-    - Corpus có cả câu tự nhiên VÀ tên riêng, mã lỗi, điều khoản
-    - Query như "Approval Matrix" khi doc đổi tên thành "Access Control SOP"
+    Hỗ trợ xử lý:
+    - Tìm kiếm theo ý nghĩa (Dense)
+    - Tìm kiếm theo từ khóa (Sparse): các tên riêng, mã lỗi, điều khoản
+    - Query dùng alias/tên cũ (ví dụ: "Approval Matrix" → "Access Control SOP")
     """
-    # TODO Sprint 3: Implement hybrid RRF
-    # Tạm thời fallback về dense
-    print("[retrieve_hybrid] Chưa implement RRF — fallback về dense")
-    return retrieve_dense(query, top_k)
+    dense_results = retrieve_dense(query, top_k=top_k)
+    sparse_results = retrieve_sparse(query, top_k=top_k)
+    
+    # RRF Algorithm
+    rrf_scores = {}
+    k_constant = 60
+    
+    # Process Dense
+    for rank, doc in enumerate(dense_results, 1):
+        doc_text = doc["text"]
+        rrf_scores[doc_text] = rrf_scores.get(doc_text, 0) + dense_weight * (1.0 / (k_constant + rank))
+    
+    # Process Sparse
+    for rank, doc in enumerate(sparse_results, 1):
+        doc_text = doc["text"]
+        if doc_text not in rrf_scores:
+            rrf_scores[doc_text] = 0
+            
+        rrf_scores[doc_text] += sparse_weight * (1.0 / (k_constant + rank))
+    
+    # Combine back with full data
+    all_docs = {d["text"]: d for d in dense_results + sparse_results}
+    
+    ranked_chunks = []
+    for text, score in sorted(rrf_scores.items(), key=lambda x: x[1], reverse=True):
+        doc_data = all_docs[text].copy()
+        doc_data["score"] = score
+        ranked_chunks.append(doc_data)
+        
+    return ranked_chunks[:top_k]
 
 
 # =============================================================================
 # RERANK (Sprint 3 alternative)
-# Cross-encoder để chấm lại relevance sau search rộng
 # =============================================================================
 
 def rerank(
@@ -160,32 +178,27 @@ def rerank(
 ) -> List[Dict[str, Any]]:
     """
     Rerank các candidate chunks bằng cross-encoder.
-
-    Cross-encoder: chấm lại "chunk nào thực sự trả lời câu hỏi này?"
-    MMR (Maximal Marginal Relevance): giữ relevance nhưng giảm trùng lặp
-
-    Funnel logic (từ slide):
-      Search rộng (top-20) → Rerank (top-6) → Select (top-3)
-
-    TODO Sprint 3 (nếu chọn rerank):
-    Option A — Cross-encoder:
-        from sentence_transformers import CrossEncoder
-        model = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
-        pairs = [[query, chunk["text"]] for chunk in candidates]
-        scores = model.predict(pairs)
-        ranked = sorted(zip(candidates, scores), key=lambda x: x[1], reverse=True)
-        return [chunk for chunk, _ in ranked[:top_k]]
-
-    Option B — Rerank bằng LLM (đơn giản hơn nhưng tốn token):
-        Gửi list chunks cho LLM, yêu cầu chọn top_k relevant nhất
-
-    Khi nào dùng rerank:
-    - Dense/hybrid trả về nhiều chunk nhưng có noise
-    - Muốn chắc chắn chỉ 3-5 chunk tốt nhất vào prompt
     """
-    # TODO Sprint 3: Implement rerank
-    # Tạm thời trả về top_k đầu tiên (không rerank)
-    return candidates[:top_k]
+    if not candidates:
+        return []
+        
+    from sentence_transformers import CrossEncoder
+    
+    # Model nhỏ, chạy nhanh trên CPU
+    model = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
+    
+    pairs = [[query, c["text"]] for c in candidates]
+    scores = model.predict(pairs)
+    
+    # Sắp xếp lại dựa trên score của Cross-Encoder
+    ranked_candidates = []
+    for i in range(len(candidates)):
+        c = candidates[i].copy()
+        c["rerank_score"] = float(scores[i])
+        ranked_candidates.append(c)
+        
+    ranked_candidates.sort(key=lambda x: x["rerank_score"], reverse=True)
+    return ranked_candidates[:top_k]
 
 
 # =============================================================================
@@ -458,16 +471,22 @@ if __name__ == "__main__":
     ]
 
     print("\n--- Sprint 2: Test Baseline (Dense) ---")
-    for query in test_queries:
-        print(f"\nQuery: {query}")
-        try:
-            result = rag_answer(query, retrieval_mode="dense", verbose=True)
-            print(f"Answer: {result['answer']}")
-            print(f"Sources: {result['sources']}")
-        except NotImplementedError:
-            print("Chưa implement — hoàn thành TODO trong retrieve_dense() và call_llm() trước.")
-        except Exception as e:
-            print(f"Lỗi: {e}")
+    # --- Sprint 3: Hybrid Search + Rerank ---
+    print("\n" + "="*60)
+    print("--- Sprint 3: Hybrid Search + Rerank ---")
+    print("="*60)
+    
+    # Query khó: dùng tên cũ (alias) hoặc mã lỗi không có trong embedding tốt
+    query_s3 = "Làm sao để có Approval Matrix và cấp quyền hệ thống?"
+    print(f"\nQuery: {query_s3}")
+    
+    result_s3 = rag_answer(
+        query_s3, 
+        retrieval_mode="hybrid", 
+        use_rerank=True, 
+        verbose=True
+    )
+    print(f"\nAnswer: {result_s3['answer']}")
 
     # Uncomment sau khi Sprint 3 hoàn thành:
     # print("\n--- Sprint 3: So sánh strategies ---")
