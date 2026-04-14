@@ -7,6 +7,7 @@ Chạy:
     python eval_trace.py --grading        # Chạy grading questions (sau 17:00)
     python eval_trace.py --analyze        # Phân tích trace đã có
     python eval_trace.py --compare        # So sánh single vs multi
+    python eval_trace.py --compare --day08-results day08/lab/results/day08_single_agent_metrics.json
 
 Outputs:
     artifacts/traces/          — trace của từng câu hỏi
@@ -14,12 +15,13 @@ Outputs:
     artifacts/eval_report.json  — báo cáo tổng kết
 """
 
+import csv
 import json
 import os
 import sys
 import argparse
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional
 
 # Import graph
 _LAB_ROOT = os.path.dirname(os.path.abspath(__file__))
@@ -32,6 +34,232 @@ def _lab_path(path: str) -> str:
     if os.path.isabs(path):
         return os.path.normpath(path)
     return os.path.normpath(os.path.join(_LAB_ROOT, path))
+
+
+def _repo_root() -> str:
+    """Root của repo (cha của day09/lab)."""
+    return os.path.normpath(os.path.join(_LAB_ROOT, "..", ".."))
+
+
+def _default_day08_json_paths() -> list[str]:
+    """Các file JSON metrics Day 08 (ưu tiên từ trên xuống)."""
+    r = _repo_root()
+    return [
+        os.path.join(r, "day08", "lab", "results", "day08_single_agent_metrics.json"),
+        _lab_path(os.path.join("artifacts", "day08_baseline.json")),
+    ]
+
+
+def _day08_ab_csv_path() -> str:
+    return os.path.join(_repo_root(), "day08", "lab", "results", "ab_comparison_test_questions.csv")
+
+
+def _day08_test_questions_path() -> str:
+    return os.path.join(_repo_root(), "day08", "lab", "data", "test_questions.json")
+
+
+def _load_day08_metrics_from_json(path: str) -> Optional[dict[str, Any]]:
+    if not os.path.isfile(path):
+        return None
+    with open(path, encoding="utf-8") as f:
+        raw = json.load(f)
+    if not isinstance(raw, dict):
+        return None
+    out: dict[str, Any] = dict(raw)
+    out.setdefault("source", path)
+    return out
+
+
+def _load_day08_from_ab_csv() -> Optional[dict[str, Any]]:
+    """
+    Tổng hợp metrics Day 08 từ CSV A/B (cùng bộ câu test) — hàng config_label=baseline_dense.
+    Không có latency (single-agent CSV không ghi) → để None.
+    """
+    csv_path = _day08_ab_csv_path()
+    if not os.path.isfile(csv_path):
+        return None
+
+    meta_by_id: dict[str, dict[str, Any]] = {}
+    tq = _day08_test_questions_path()
+    if os.path.isfile(tq):
+        with open(tq, encoding="utf-8") as f:
+            for q in json.load(f):
+                meta_by_id[q["id"]] = q
+
+    baseline_rows: list[dict[str, str]] = []
+    with open(csv_path, newline="", encoding="utf-8") as f:
+        for row in csv.DictReader(f):
+            if row.get("config_label") == "baseline_dense":
+                baseline_rows.append(row)
+
+    if not baseline_rows:
+        return None
+
+    # Chỉ lấy một bản mỗi id (CSV có thể lặp baseline+variant)
+    seen: set[str] = set()
+    uniq: list[dict[str, str]] = []
+    for row in baseline_rows:
+        qid = row.get("id", "")
+        if not qid or qid in seen:
+            continue
+        seen.add(qid)
+        uniq.append(row)
+
+    metrics = ("faithfulness", "relevance", "context_recall", "completeness")
+
+    def _avg(key: str) -> float:
+        vals: list[float] = []
+        for row in uniq:
+            try:
+                vals.append(float(row[key]))
+            except (TypeError, ValueError, KeyError):
+                pass
+        return round(sum(vals) / len(vals), 4) if vals else 0.0
+
+    avgs = {m: _avg(m) for m in metrics}
+    # Proxy 0–1 để so sánh với confidence Day 09 (cùng thang gần đúng)
+    avg_quality_0_1 = round(
+        sum(avgs[m] for m in metrics) / (4 * 5),
+        4,
+    )
+
+    # Abstain: category Insufficient Context
+    abstain = [r for r in uniq if r.get("category") == "Insufficient Context"]
+    abstain_ok = 0
+    for r in abstain:
+        ans = (r.get("answer") or "").lower()
+        if (
+            "không tìm thấy" in ans
+            or "không đủ" in ans
+            or "không có thông tin" in ans
+        ):
+            abstain_ok += 1
+    abstain_rate: str
+    if abstain:
+        pct = round(100 * abstain_ok / len(abstain))
+        abstain_rate = f"{abstain_ok}/{len(abstain)} ({pct}%)"
+    else:
+        abstain_rate = "N/A (không có câu abstain trong tập)"
+
+    # Multi-hop proxy: độ khó hard trong test_questions
+    hard_ids = {i for i, m in meta_by_id.items() if m.get("difficulty") == "hard"}
+    hard_rows = [r for r in uniq if r.get("id") in hard_ids]
+    if hard_rows:
+        hc = [_float_row(r, "completeness") for r in hard_rows]
+        hc = [x for x in hc if x is not None]
+        mh = round(sum(hc) / len(hc) / 5.0, 4) if hc else None
+        multi_hop_accuracy = f"{mh:.2f} (trung bình completeness/5 trên {len(hard_rows)} câu hard)" if mh is not None else "N/A"
+    else:
+        multi_hop_accuracy = "N/A"
+
+    return {
+        "total_questions": len(uniq),
+        "avg_confidence": avg_quality_0_1,
+        "avg_confidence_note": "Trung bình (faithfulness+relevance+context_recall+completeness)/20 — proxy so với confidence Day 09",
+        "avg_latency_ms": None,
+        "avg_scores": avgs,
+        "abstain_rate": abstain_rate,
+        "multi_hop_accuracy": multi_hop_accuracy,
+        "source": f"derived:{os.path.basename(csv_path)} (baseline_dense)",
+    }
+
+
+def _float_row(row: dict[str, str], key: str) -> Optional[float]:
+    try:
+        return float(row[key])
+    except (TypeError, ValueError, KeyError):
+        return None
+
+
+def _merge_analysis_deltas(
+    day08: dict[str, Any],
+    multi: dict[str, Any],
+) -> dict[str, str]:
+    """Tính chênh lệch số liệu Day 09 vs Day 08 (khi đủ dữ liệu)."""
+    m_conf = multi.get("avg_confidence")
+    d_conf = day08.get("avg_confidence")
+
+    m_lat = multi.get("avg_latency_ms")
+    d_lat = day08.get("avg_latency_ms")
+
+    lines: dict[str, str] = {}
+
+    if isinstance(m_conf, (int, float)) and isinstance(d_conf, (int, float)):
+        delta = float(m_conf) - float(d_conf)
+        lines["confidence_delta"] = (
+            f"avg proxy: Day09={m_conf:.3f} vs Day08={d_conf:.3f} → Δ {delta:+.3f} "
+            f"(confidence multi-agent vs điểm chất lượng 0–1 từ scorecard Day 08)"
+        )
+    elif isinstance(m_conf, (int, float)) and d_conf is None:
+        lines["confidence_delta"] = (
+            f"Day09 avg confidence={m_conf:.3f}; Day08 thiếu baseline — thêm JSON hoặc ab_comparison_test_questions.csv."
+        )
+    else:
+        lines["confidence_delta"] = (
+            "Chưa so sánh được: thiếu avg_confidence Day 08 (tạo day08/lab/results/day08_single_agent_metrics.json "
+            "hoặc đảm bảo có ab_comparison_test_questions.csv)."
+        )
+
+    if isinstance(m_lat, (int, float)) and isinstance(d_lat, (int, float)):
+        dlt = int(m_lat) - int(d_lat)
+        slower = "chậm hơn" if dlt > 0 else "nhanh hơn" if dlt < 0 else "tương đương"
+        lines["latency_delta"] = (
+            f"avg latency: Day09={int(m_lat)}ms vs Day08={int(d_lat)}ms → Δ {dlt:+d}ms (Day09 {slower} Day08)"
+        )
+    elif isinstance(m_lat, (int, float)):
+        lines["latency_delta"] = (
+            f"Day09 avg latency={int(m_lat)}ms; Day08 không có latency trong CSV — chạy Day 08 với instrument hoặc bổ sung JSON."
+        )
+    else:
+        lines["latency_delta"] = "Thiếu latency trung bình Day 09 (chưa có trace) hoặc Day 08."
+
+    lines["routing_visibility"] = (
+        "Day 09: mỗi trace có supervisor_route + route_reason + workers_called → debug routing dễ hơn Day 08 (single agent không tách bước)."
+    )
+    lines["debuggability"] = (
+        "Multi-agent: test độc lập retrieval / policy / synthesis. Single-agent: chỉ một pipeline RAG."
+    )
+    lines["mcp_benefit"] = (
+        "Day 09 mở rộng qua MCP tools; Day 08 cần sửa code pipeline nếu thêm nguồn/tool."
+    )
+    lines["accuracy_delta"] = (
+        "Độ chính xác theo rubric grading: so khớp grading_run.jsonl sau khi chấm — không thay bằng confidence tự động."
+    )
+
+    return lines
+
+
+def _resolve_metrics_path(p: str) -> str:
+    """Resolve path metrics: abs, hoặc repo-relative (day08/..., day09/...), hoặc relative day09/lab."""
+    if os.path.isabs(p):
+        return os.path.normpath(p)
+    if p.startswith(("day08/", "day09/")):
+        return os.path.normpath(os.path.join(_repo_root(), p))
+    return _lab_path(p)
+
+
+def _load_day08_baseline(day08_results_file: Optional[str]) -> dict[str, Any]:
+    """Ưu tiên: file truyền vào → JSON mặc định → suy ra từ CSV Day 08."""
+    if day08_results_file:
+        p = _resolve_metrics_path(day08_results_file)
+        loaded = _load_day08_metrics_from_json(p)
+        if loaded:
+            return loaded
+    for p in _default_day08_json_paths():
+        loaded = _load_day08_metrics_from_json(p)
+        if loaded:
+            return loaded
+    derived = _load_day08_from_ab_csv()
+    if derived:
+        return derived
+    return {
+        "total_questions": 15,
+        "avg_confidence": None,
+        "avg_latency_ms": None,
+        "abstain_rate": "N/A",
+        "multi_hop_accuracy": "N/A",
+        "source": "not_found — chạy Day08 eval để tạo CSV hoặc nộp day08_single_agent_metrics.json",
+    }
 
 
 # ─────────────────────────────────────────────
@@ -268,43 +496,37 @@ def compare_single_vs_multi(
     day08_results_file: Optional[str] = None,
 ) -> dict:
     """
-    So sánh Day 08 (single agent RAG) vs Day 09 (multi-agent).
+    So sánh Day 08 (single-agent RAG) vs Day 09 (multi-agent).
 
-    TODO Sprint 4: Điền kết quả thực tế từ Day 08 vào day08_baseline.
+    Nguồn Day 08 (theo thứ tự):
+    1. `day08_results_file` nếu truyền vào và tồn tại (JSON).
+    2. `day08/lab/results/day08_single_agent_metrics.json`
+    3. `day09/lab/artifacts/day08_baseline.json`
+    4. Suy ra từ `day08/lab/results/ab_comparison_test_questions.csv` (hàng baseline_dense).
 
-    Returns:
-        dict của comparison metrics
-    """
-    multi_metrics = analyze_traces(multi_traces_dir)
-
-    # TODO: Load Day 08 results nếu có
-    # Nếu không có, dùng baseline giả lập để format
-    day08_baseline = {
-        "total_questions": 15,
-        "avg_confidence": 0.0,          # TODO: Điền từ Day 08 eval.py
-        "avg_latency_ms": 0,            # TODO: Điền từ Day 08
-        "abstain_rate": "?",            # TODO: Điền từ Day 08
-        "multi_hop_accuracy": "?",      # TODO: Điền từ Day 08
+    JSON gợi ý cho (1–3), có thể thêm tay sau khi chạy Day08 eval:
+    {
+      "total_questions": 15,
+      "avg_confidence": 0.82,
+      "avg_latency_ms": 2100,
+      "abstain_rate": "2/2 (100%)",
+      "multi_hop_accuracy": "0.75"
     }
 
-    if day08_results_file and os.path.exists(day08_results_file):
-        with open(day08_results_file) as f:
-            day08_baseline = json.load(f)
+    Returns:
+        dict có day08_single_agent, day09_multi_agent, analysis (delta có điều kiện).
+    """
+    multi_metrics = analyze_traces(multi_traces_dir)
+    day08_baseline = _load_day08_baseline(day08_results_file)
 
-    comparison = {
+    analysis = _merge_analysis_deltas(day08_baseline, multi_metrics)
+
+    return {
         "generated_at": datetime.now().isoformat(),
         "day08_single_agent": day08_baseline,
         "day09_multi_agent": multi_metrics,
-        "analysis": {
-            "routing_visibility": "Day 09 có route_reason cho từng câu → dễ debug hơn Day 08",
-            "latency_delta": "TODO: Điền delta latency thực tế",
-            "accuracy_delta": "TODO: Điền delta accuracy thực tế từ grading",
-            "debuggability": "Multi-agent: có thể test từng worker độc lập. Single-agent: không thể.",
-            "mcp_benefit": "Day 09 có thể extend capability qua MCP không cần sửa core. Day 08 phải hard-code.",
-        },
+        "analysis": analysis,
     }
-
-    return comparison
 
 
 # ─────────────────────────────────────────────
@@ -381,6 +603,12 @@ if __name__ == "__main__":
     parser.add_argument("--compare", action="store_true", help="Compare single vs multi")
     parser.add_argument("--smoke-test", action="store_true", help="Run quick smoke test")
     parser.add_argument("--test-file", default="data/test_questions.json", help="Test questions file")
+    parser.add_argument(
+        "--day08-results",
+        default=None,
+        metavar="PATH",
+        help="JSON metrics Day 08 (tùy chọn). Mặc định: day08/lab/results/day08_single_agent_metrics.json hoặc suy từ ab_comparison CSV.",
+    )
     args = parser.parse_args()
 
     if args.grading:
@@ -400,7 +628,7 @@ if __name__ == "__main__":
 
     elif args.compare:
         # So sánh single vs multi
-        comparison = compare_single_vs_multi()
+        comparison = compare_single_vs_multi(day08_results_file=args.day08_results)
         report_file = save_eval_report(comparison)
         print(f"\n📊 Comparison report saved → {report_file}")
         print("\n=== Day 08 vs Day 09 ===")
@@ -416,7 +644,7 @@ if __name__ == "__main__":
         print_metrics(metrics)
 
         # Lưu báo cáo
-        comparison = compare_single_vs_multi()
+        comparison = compare_single_vs_multi(day08_results_file=args.day08_results)
         report_file = save_eval_report(comparison)
         print(f"\n📄 Eval report → {report_file}")
         print("\n✅ Sprint 4 complete!")
