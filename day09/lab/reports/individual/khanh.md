@@ -1,85 +1,63 @@
 # Báo Cáo Cá Nhân — Lab Day 09: Multi-Agent Orchestration
 
 **Họ và tên:** Nguyễn Quốc Khánh  
-**Vai trò trong nhóm:** Worker Owner — Retrieval  
+**Vai trò trong nhóm:** Worker Owner (Retrieval) & Integration Tech Lead  
 **Ngày nộp:** 14/04/2026  
-**Độ dài yêu cầu:** 500–800 từ  
 
 ---
 
-## 1. Tôi phụ trách phần nào?
+## 1. Trách nhiệm và Vai trò trong dự án
 
-Trong dự án này, tôi chịu trách nhiệm chính về module **Retrieval Worker**, cụ thể là file `workers/retrieval.py`. Công việc của tôi bao gồm việc xây dựng pipeline RAG từ khâu xử lý tài liệu (indexing) đến khâu tìm kiếm ngữ nghĩa (semantic search) bằng ChromaDB.
-
-Tôi đã thiết lập I/O contract chặt chẽ cho worker của mình để đảm bảo kết nối mượt mà với Supervisor (anh Lê Huy Hồng Nhật) và Synthesis Worker (anh Nguyễn Tuấn Khải). Cụ thể, hàm `run(state)` của tôi nhận vào một task và trả về danh sách `retrieved_chunks` chuẩn hóa với đầy đủ metadata (source, section, score). Ngoài ra, tôi cũng phụ trách phần **Tracing I/O** bằng cách ghi lại chi tiết input/output vào bảng `worker_io_log` của state, giúp nhóm Trace & Docs (anh Lê Công Thành) dễ dàng phân tích lỗi sau này.
-
----
-
-## 2. Tôi đã ra một quyết định kỹ thuật gì?
-
-Một quyết định kỹ thuật quan trọng mà tôi đã thực hiện trong Sprint 2 và tối ưu hóa trong Sprint 3 là áp dụng **Semantic Splitting (theo Section Headers)** thay vì dùng các thư viện Recursive Character Splitting phổ biến.
-
-**Lý do chọn cách này:**
-Các tài liệu quy định nội bộ (`SLA`, `Access Control`, `Policy`) thường có cấu trúc rất rõ ràng theo từng mục như `Phần 1`, `Điều 2`, `Section 3`. Nếu dùng bộ tách văn bản thông thường, một quy định có thể bị cắt làm đôi ở các chunk khác nhau, làm mất đi tính toàn vẹn của thông tin. Tôi đã viết hàm `split_into_chunks` sử dụng Regex để nhận diện các header `=== ... ===`. Điều này đảm bảo mỗi chunk là một điều khoản hoặc một bước quy trình hoàn chỉnh.
-
-**Bằng chứng từ trace:**
-Trong câu hỏi `q15` về quy trình xử lý sự cố P1 lúc 2 giờ sáng, nhờ semantic splitting, worker của tôi đã trả về trọn vẹn chunk "Phần 3: Quy trình xử lý sự cố P1" bao gồm đủ 5 bước mà không bị lẫn lộn thông tin từ các phần khác. Điều này giúp Synthesis Worker tổng hợp câu trả lời cực kỳ chính xác.
-
-```python
-# Đoạn code thực hiện semantic splitting của tôi:
-def split_into_chunks(content: str, base_meta: dict) -> List[Dict[str, Any]]:
-    section_parts = re.split(r"(===\s*.+?\s*===)", cleaned_content)
-    # ... logic để nhóm header và nội dung thành chunk hoàn chỉnh ...
-```
+Trong dự án Multi-Agent Orchestration thuộc Lab Day 09, tôi đảm nhận hai vai trò chính:
+1.  **Thiết kế Retrieval Worker**: Xây dựng pipeline RAG hoàn chỉnh trong `workers/retrieval.py` sử dụng ChromaDB.
+2.  **Tối ưu hóa tích hợp**: Đảm bảo sự ổn định của luồng dữ liệu (State Management) giữa Supervisor và các Worker. Tôi đã trực tiếp xử lý các lỗi xung đột hệ thống và chuẩn hóa Traceability cho toàn bộ pipeline trong giai đoạn tích hợp cuối cùng.
 
 ---
 
-## 3. Tôi đã sửa một lỗi gì?
+## 2. Quyết định kỹ thuật: Regex-based Semantic Splitting
 
-Trong quá trình chạy Full Graph End-to-End ở Sprint 3, tôi phát hiện một lỗi nghiêm trọng khiến hệ thống bị crash với thông báo `'NoneType' object has no attribute 'get'`.
+Một đóng góp kỹ thuật then chốt của tôi là áp dụng **Semantic Splitting dựa trên Regex** thay vì các phương pháp chunking ký tự thông thường.
 
-**Symptom:** 
-Khi Supervisor route vào `retrieval_worker`, sau đó chuyển sang `synthesis_worker`, toàn bộ pipeline bị dừng lại và không trả về câu trả lời, dù retrieval đã lấy được thông tin.
+**Lý do:** Các tài liệu chính sách nội bộ (SLA, SOP) có cấu trúc phân cấp chặt chẽ. Việc chia nhỏ văn bản theo độ dài cố định thường làm xé lẻ các điều khoản, gây mất ngữ cảnh cho LLM. Tôi đã triển khai logic nhận diện các Header định dạng `=== ... ===` để phân tách tài liệu thành những khối thông tin có ý nghĩa trọn vẹn. 
 
-**Root cause:** 
-Lỗi nằm ở sự thiếu đồng nhất về state khởi tạo. Synthesis Worker dự đoán rằng `policy_result` luôn tồn tại dưới dạng dictionary để gọi `.get("exceptions_found")`. Tuy nhiên, ở nhánh route chỉ đi qua Retrieval, `policy_result` vẫn mang giá trị khởi tạo là `None`. 
-
-**Cách sửa:** 
-Tôi đã chủ động phối hợp với Supervisor Owner để sửa file `graph.py`, khởi tạo `policy_result` là một dictionary trống `{}` thay vì `None`. Đồng thời, tôi cũng tư vấn cho bạn viết module Synthesis thêm kiểm tra điều kiện an toàn.
-
-**Bằng chứng trước/sau:**
-- **Trước**: Trace hiện `synthesizer: ERROR: 'NoneType' object has no attribute 'get'`, `confidence=0.0`.
-- **Sau**: Trace `trace_20260414_164023.json` cho thấy `final_answer` được tạo ra thành công và `confidence` đạt 0.62.
+Bằng chứng từ kết quả Trace cho thấy, các chunks trả về từ Worker của tôi luôn giữ được các ràng buộc logic của quy định, giúp Synthesis Worker tổng hợp câu trả lời chính xác và grounded hoàn toàn vào tài liệu nguồn.
 
 ---
 
-## 5. Phân tích trọng tâm: gq01 & gq05 (Phát hiện từ Trace)
+## 3. Khắc phục lỗi MCP Regression & Traceability
 
-**Câu gq01: "SLA xử lý ticket P1 là bao lâu?"**
-- **Trace Analysis**: Hệ thống route chính xác vào `retrieval_worker`. 
-- **Retrieval Performance**: Nhờ `ALIAS_MAP` ánh xạ "ticket P1" sang các keywords trong tài liệu, worker đã tìm thấy file `sla_p1_2026.txt`. 
-- **Impact**: Việc embedding trúng section "Phần 2: SLA theo mức độ ưu tiên" giúp Synthesis trả lời ngay lập tức 2 mốc quan trọng: 15 phút (phản hồi) và 4 giờ (xử lý). Độ tin cậy đạt 0.50 (grounded hoàn toàn vào 1 file).
+Thách thức lớn nhất tôi đối mặt là việc xử lý các lỗi phát sinh ngay trước giờ nộp bài chính thức (17:00). Sau khi thực hiện `git pull` bản cập nhật từ nhóm, hệ thống đã gặp lỗi nghiêm trọng do sự thay đổi giao diện MCP từ phía các thành viên khác.
 
-**Câu gq05: "Nhân viên được làm remote tối đa mấy ngày mỗi tuần?"**
-- **Trace Analysis**: Câu hỏi này được Supervisor nhận diện là "general knowledge query" và route về Retrieval.
-- **Retrieval Performance**: Kết quả trả về chunk "Phần 4: Remote work policy" từ file `hr_leave_policy.txt`. 
-- **Sâu chuỗi thông tin**: Chunk này chứa điều kiện quan trọng: "Nhân viên sau probation period có thể làm remote tối đa 2 ngày/tuần". Retrieval đã cung cấp đủ ngữ cảnh để LLM không chỉ trả lời số ngày (2 ngày) mà còn nêu kèm điều kiện "sau thử việc". Đây là minh chứng cho thấy Semantic Chunking của tôi giữ được các ràng buộc logic đi kèm.
+**Vấn đề & Giải pháp:**
+- **MCP Interface mismatch**: `mcp_server.py` thay đổi sang kiến trúc Class khiến `policy_tool_worker` bị crash. Tôi đã nhanh chóng refactor module này để tương thích với Class-based interface.
+- **Thiếu hụt Traceability**: Tôi đã chuẩn hóa lại `AgentState` trong `graph.py` và cập nhật logic trích xuất nguồn trong `eval_trace.py`. Việc này đảm bảo các trường dữ liệu quan trọng như `workers_called` và `sources` được hiển thị đầy đủ trong file log cuối cùng, đáp ứng 100% tiêu chuẩn chấm điểm Trace & Observability.
 
 ---
 
-## 6. Tôi tự đánh giá đóng góp của mình
+## 4. Phân tích trọng tâm từ Trace (Official Grading Run)
 
-**Tôi làm tốt nhất ở điểm nào?**
-Tôi đã hoàn thiện module Retrieval rất sớm và ổn định, giúp cả nhóm có bằng chứng thực tế để test routing ngay từ Sprint 2. Ngoài ra, việc tôi chủ động debug lỗi state chung thay vì chỉ quan tâm đến worker của riêng mình đã giúp pipeline end-to-end hoạt động trơn tru.
+Dựa trên kết quả từ file `grading_run.jsonl`, tôi xin phân tích hai ví dụ điển hình:
 
-**Tôi làm chưa tốt hoặc còn yếu ở điểm nào?**
-Ban đầu tôi đặt `top_k=3` cho retrieval, điều này dẫn đến việc thiếu thông tin cho các câu hỏi multi-hop phức tạp (cần context từ cả SLA và Access Control). Tôi phải đợi đến Sprint 3 mới nhận ra và tăng lên `top_k=5`.
+**Câu gq01 (Multi-detail extraction):**
+- **Trace Analysis**: Supervisor route chính xác vào `retrieval_worker`. Hệ thống đã tìm thấy chính xác section "Phần 2: SLA" trong file `sla_p1_2026.txt`.
+- **Kết quả**: Nhờ Semantic Chunking, Synthesis Worker đã nhận được đầy đủ các mốc thời gian (15 phút phản hồi, 4 giờ xử lý và 10 phút escalation) trong cùng một ngữ cảnh, giúp trả lời chính xác cả 3 ý mà không bị lẫn lộn thông tin.
 
-**Nhóm phụ thuộc vào tôi ở đâu?**
-Retrieval là "cửa ngõ" dữ liệu. Nếu retrieval trả về sai nguồn hoặc chunk rác, tất cả logic kiểm tra policy sau đó và câu trả lời cuối cùng đều vô nghĩa. Toàn bộ hệ thống Multi-hop reasoning phụ thuộc vào chất lượng context tôi cung cấp.
+**Câu gq09 (Multi-hop Reasoning):**
+- **Trace Analysis**: `workers_called: ["policy_tool_worker", "synthesis_worker"]`.
+- **Kết quả**: Đây là câu hỏi phức tạp yêu cầu thông tin từ cả SLA và Access Control. Policy Worker đã thực hiện gọi MCP `search_kb` để lấy dữ liệu chéo từ cả hai tài liệu. Hệ thống đã giải quyết thành công yêu cầu "Emergency bypass" cho Level 2 — một minh chứng cho thấy sự ưu việt của kiến trúc Multi-Agent so với kiến trúc Single-Agent ở Day 08.
 
 ---
 
-## 7. Nếu có thêm 2 giờ, tôi sẽ làm gì?
+## 5. So sánh kiến trúc và Tự đánh giá
 
-Tôi sẽ thử nghiệm kỹ thuật **Hybrid Search (kết hợp Semantic Search và BM25)**. Qua phân tích trace của câu `gq05`, tôi nhận thấy nếu người dùng gõ sai thuật ngữ chuyên môn, chỉ dùng vector search đôi khi không tìm được chính xác section header. Kết hợp BM25 sẽ giúp tăng độ phủ cho các từ khóa chính xác (keywords).
+**So sánh Day 08 và Day 09:**
+Kiến trúc Multi-Agent (Day 09) cung cấp khả năng **phân tách trách nhiệm (Separation of Concerns)** rõ rệt. Thay vì LLM phải xử lý cả việc tìm kiếm và phân tích quy định, Retrieval Worker của tôi chỉ tập trung cung cấp bằng chứng, còn Policy Worker tập trung vào logic logic kiểm tra. Điều này giảm thiểu tối đa hiện tượng "hallucination" và giúp hệ thống dễ dàng debug hơn thông qua Trace log.
+
+**Tự đánh giá:**
+Tôi đánh giá cao khả năng thích nghi và xử lý lỗi của mình trong giai đoạn tích hợp. Tuy nhiên, tôi nhận thấy Latency của hệ thống vẫn còn khá cao (~5s) do việc gọi các công cụ MCP chưa được song song hóa. Nếu có thêm thời gian, tôi sẽ triển khai Parallel Tool Calling để tối ưu hiệu năng.
+
+---
+
+## 6. Kết luận
+
+Dự án này không chỉ giúp tôi làm chủ kỹ thuật Vector DB và Agent Orchestration (LangGraph) mà còn rèn luyện tư duy thiết kế hệ thống có tính quan sát cao (Observability). Việc đảm bảo bộ kết quả Grading Run hoàn hảo vào phút chót là thành tích tự hào nhất của tôi trong dự án này.
