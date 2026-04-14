@@ -120,6 +120,7 @@ def retrieve_dense(query: str, top_k: int = DEFAULT_TOP_K) -> list:
                 "score": round(1 - dist, 4),  # cosine similarity
                 "metadata": meta,
             })
+        print(f"✅ ChromaDB retrieved {len(chunks)} chunks for query: '{query}'")
         return chunks
 
     except Exception as e:
