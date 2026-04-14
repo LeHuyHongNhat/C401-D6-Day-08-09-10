@@ -283,9 +283,9 @@ def run(state: Dict[str, Any]) -> Dict[str, Any]:
 
     worker_io["latency_ms"] = int((datetime.now() - start_time).total_seconds() * 1000)
     
-    if "worker_io_log" not in state or not isinstance(state["worker_io_log"], list):
-        state["worker_io_log"] = []
-    state["worker_io_log"].append(worker_io)
+    if "worker_io_logs" not in state or not isinstance(state["worker_io_logs"], list):
+        state["worker_io_logs"] = []
+    state["worker_io_logs"].append(worker_io)
 
     return state
 
