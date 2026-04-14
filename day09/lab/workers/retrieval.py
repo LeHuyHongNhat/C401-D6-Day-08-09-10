@@ -160,7 +160,10 @@ def _build_index() -> None:
             collection.delete(ids=all_data["ids"])
 
     # 2. Load và xử lý tài liệu
-    docs_dir = Path("./day09/lab/data/docs")
+    # Xác định docs_dir tương đối so với vị trí file retrieval.py
+    base_dir = Path(__file__).parent.parent.resolve()
+    docs_dir = base_dir / "data" / "docs"
+    
     if not docs_dir.exists():
         print(f"❌ Không tìm thấy thư mục tài liệu: {docs_dir}")
         return

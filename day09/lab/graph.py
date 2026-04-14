@@ -15,7 +15,11 @@ import time
 from datetime import datetime
 from typing import TypedDict, List, Optional, Literal
 
+from dotenv import load_dotenv
 from langgraph.graph import StateGraph, START, END
+
+# Load environment variables
+load_dotenv()
 
 # ─────────────────────────────────────────────
 # 1. Shared State — dữ liệu đi xuyên toàn graph
@@ -151,23 +155,20 @@ def human_review_node(state: AgentState) -> AgentState:
 # 5. Import Workers
 # ─────────────────────────────────────────────
 
-# TODO Sprint 2: Uncomment sau khi implement workers
-# from workers.retrieval import run as retrieval_run
+# Thêm path để import từ project root
+import sys
+current_dir = os.path.dirname(os.path.abspath(__file__))
+if current_dir not in sys.path:
+    sys.path.append(current_dir)
+
+from workers.retrieval import run as retrieval_run
 # from workers.policy_tool import run as policy_tool_run
 # from workers.synthesis import run as synthesis_run
 
 
 def retrieval_worker_node(state: AgentState) -> AgentState:
-    """Wrapper gọi retrieval worker."""
-    # TODO Sprint 2: Thay bằng retrieval_run(state)
-    state["history"].append("[retrieval_worker] start")
-
-    # Placeholder output để test graph chạy được
-    state["retrieved_chunks"] = [
-        {"text": "SLA P1: phản hồi 15 phút, xử lý 4 giờ.", "source": "sla_p1_2026.txt", "score": 0.92}
-    ]
-    state["history"].append(f"[retrieval_worker] completed | chunks={len(state['retrieved_chunks'])}")
-    return state
+    """Wrapper gọi retrieval worker thật."""
+    return retrieval_run(state)
 
 
 def policy_tool_worker_node(state: AgentState) -> AgentState:
