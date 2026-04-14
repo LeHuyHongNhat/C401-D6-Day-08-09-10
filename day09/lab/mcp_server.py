@@ -39,6 +39,7 @@ from typing import Any, Dict, List, Optional
 # Giống với cách MCP server expose tool list cho client
 # ─────────────────────────────────────────────
 
+
 TOOL_SCHEMAS = {
     "search_kb": {
         "name": "search_kb",
@@ -128,42 +129,6 @@ TOOL_SCHEMAS = {
 }
 
 
-# ─────────────────────────────────────────────
-# Tool Implementations
-# ─────────────────────────────────────────────
-
-def tool_search_kb(query: str, top_k: int = 3) -> dict:
-    """
-    Tìm kiếm Knowledge Base bằng semantic search.
-
-    TODO Sprint 3: Kết nối với ChromaDB thực.
-    Hiện tại: Delegate sang retrieval worker.
-    """
-    try:
-        # Tái dùng retrieval logic từ workers/retrieval.py
-        import sys
-        sys.path.insert(0, os.path.dirname(__file__))
-        from workers.retrieval import retrieve_dense
-        chunks = retrieve_dense(query, top_k=top_k)
-        sources = list({c["source"] for c in chunks})
-        return {
-            "chunks": chunks,
-            "sources": sources,
-            "total_found": len(chunks),
-        }
-    except Exception as e:
-        # Fallback: return mock data nếu ChromaDB chưa setup
-        return {
-            "chunks": [
-                {
-                    "text": f"[MOCK] Không thể query ChromaDB: {e}. Kết quả giả lập.",
-                    "source": "mock_data",
-                    "score": 0.5,
-                }
-            ],
-            "sources": ["mock_data"],
-            "total_found": 1,
-        }
 
 
 # Mock ticket database
@@ -193,18 +158,7 @@ MOCK_TICKETS = {
 }
 
 
-def tool_get_ticket_info(ticket_id: str) -> dict:
-    """
-    Tra cứu thông tin ticket (mock data).
-    """
-    ticket = MOCK_TICKETS.get(ticket_id.upper())
-    if ticket:
-        return ticket
-    # Không tìm thấy
-    return {
-        "error": f"Ticket '{ticket_id}' không tìm thấy trong hệ thống.",
-        "available_mock_ids": list(MOCK_TICKETS.keys()),
-    }
+
 
 
 # Mock access control rules
@@ -228,138 +182,221 @@ ACCESS_RULES = {
 }
 
 
-def tool_check_access_permission(access_level: int, requester_role: str, is_emergency: bool = False) -> dict:
-    """
-    Kiểm tra điều kiện cấp quyền theo Access Control SOP.
-    """
-    rule = ACCESS_RULES.get(access_level)
-    if not rule:
-        return {"error": f"Access level {access_level} không hợp lệ. Levels: 1, 2, 3."}
-
-    can_grant = True
-    notes = []
-
-    if is_emergency and rule.get("emergency_can_bypass"):
-        notes.append(rule.get("emergency_bypass_note", ""))
-        can_grant = True
-    elif is_emergency and not rule.get("emergency_can_bypass"):
-        notes.append(f"Level {access_level} KHÔNG có emergency bypass. Phải follow quy trình chuẩn.")
-
-    return {
-        "access_level": access_level,
-        "can_grant": can_grant,
-        "required_approvers": rule["required_approvers"],
-        "approver_count": len(rule["required_approvers"]),
-        "emergency_override": is_emergency and rule.get("emergency_can_bypass", False),
-        "notes": notes,
-        "source": "access_control_sop.txt",
-    }
-
-
-def tool_create_ticket(priority: str, title: str, description: str = "") -> dict:
-    """
-    Tạo ticket mới (MOCK — in log, không tạo thật).
-    """
-    mock_id = f"IT-{9900 + hash(title) % 99}"
-    ticket = {
-        "ticket_id": mock_id,
-        "priority": priority,
-        "title": title,
-        "description": description[:200],
-        "status": "open",
-        "created_at": datetime.now().isoformat(),
-        "url": f"https://jira.company.internal/browse/{mock_id}",
-        "note": "MOCK ticket — không tồn tại trong hệ thống thật",
-    }
-    print(f"  [MCP create_ticket] MOCK: {mock_id} | {priority} | {title[:50]}")
-    return ticket
 
 
 # ─────────────────────────────────────────────
 # Dispatch Layer — MCP server interface
 # ─────────────────────────────────────────────
 
-TOOL_REGISTRY = {
-    "search_kb": tool_search_kb,
-    "get_ticket_info": tool_get_ticket_info,
-    "check_access_permission": tool_check_access_permission,
-    "create_ticket": tool_create_ticket,
-}
 
 
-def list_tools() -> list:
+
+#--------------Taans--------------------------------
+class MockMCPServer:
     """
-    MCP discovery: trả về danh sách tools có sẵn.
-    Tương đương với `tools/list` trong MCP protocol.
+    Mock MCP Server — cung cấp 2 tools:
+    1. search_kb(query, top_k) — search Knowledge Base
+    2. get_ticket_info(ticket_id) — tra cứu ticket (mock data)
     """
-    return list(TOOL_SCHEMAS.values())
+    def __init__(self):
+        self.TOOL_REGISTRY = {
+            "search_kb": self.tool_search_kb,
+            "get_ticket_info": self.tool_get_ticket_info,
+            "check_access_permission": self.tool_check_access_permission,
+            "create_ticket": self.tool_create_ticket,
+        }
+    def call(self, tool: str, input_data: dict) -> dict:
+        timestamp = datetime.now().isoformat()
 
+        if tool == "search_kb":
+            result = self.tool_search_kb(**input_data)
+        elif tool == "get_ticket_info":
+            result = self.tool_get_ticket_info(**input_data)
+        else:
+            result = {"error": f"Unknown tool: {tool}"}
 
-def dispatch_tool(tool_name: str, tool_input: dict) -> dict:
-    """
-    MCP execution: nhận tool_name và input, gọi tool tương ứng.
-    Tương đương với `tools/call` trong MCP protocol.
-
-    Args:
-        tool_name: tên tool (phải có trong TOOL_REGISTRY)
-        tool_input: input dict (phải match với tool's inputSchema)
-
-    Returns:
-        Tool output dict, hoặc error dict nếu thất bại
-    """
-    if tool_name not in TOOL_REGISTRY:
+        # Log format bắt buộc theo README
         return {
-            "error": f"Tool '{tool_name}' không tồn tại. Available: {list(TOOL_REGISTRY.keys())}"
+            "tool": tool,
+            "input": input_data,
+            "output": result,
+            "timestamp": timestamp
         }
 
-    tool_fn = TOOL_REGISTRY[tool_name]
-    try:
-        result = tool_fn(**tool_input)
-        return result
-    except TypeError as e:
+    def tool_search_kb(self,query: str, top_k: int = 3) -> dict:
+        """
+        Tìm kiếm Knowledge Base bằng semantic search.
+
+        TODO Sprint 3: Kết nối với ChromaDB thực.
+        Hiện tại: Delegate sang retrieval worker.
+        """
+        try:
+            # Tái dùng retrieval logic từ workers/retrieval.py
+            import sys
+            sys.path.insert(0, os.path.dirname(__file__))
+            from workers.retrieval import retrieve_dense
+            chunks = retrieve_dense(query, top_k=top_k)
+            sources = list({c["source"] for c in chunks})
+            return {
+                "chunks": chunks,
+                "sources": sources,
+                "total_found": len(chunks),
+            }
+        except Exception as e:
+            # Fallback: return mock data nếu ChromaDB chưa setup
+            return {
+                "chunks": [
+                    {
+                        "text": f"[MOCK] Không thể query ChromaDB: {e}. Kết quả giả lập.",
+                        "source": "mock_data",
+                        "score": 0.5,
+                    }
+                ],
+                "sources": ["mock_data"],
+                "total_found": 1,
+            }
+    def tool_get_ticket_info(self,ticket_id: str) -> dict:
+        """
+        Tra cứu thông tin ticket (mock data).
+        """
+        ticket = MOCK_TICKETS.get(ticket_id.upper())
+        if ticket:
+            return ticket
+        # Không tìm thấy
         return {
-            "error": f"Invalid input for tool '{tool_name}': {e}",
-            "schema": TOOL_SCHEMAS[tool_name]["inputSchema"],
+            "error": f"Ticket '{ticket_id}' không tìm thấy trong hệ thống.",
+            "available_mock_ids": list(MOCK_TICKETS.keys()),
         }
-    except Exception as e:
+    def tool_check_access_permission(self,access_level: int, requester_role: str, is_emergency: bool = False) -> dict:
+        """
+        Kiểm tra điều kiện cấp quyền theo Access Control SOP.
+        """
+        rule = ACCESS_RULES.get(access_level)
+        if not rule:
+            return {"error": f"Access level {access_level} không hợp lệ. Levels: 1, 2, 3."}
+
+        can_grant = True
+        notes = []
+
+        if is_emergency and rule.get("emergency_can_bypass"):
+            notes.append(rule.get("emergency_bypass_note", ""))
+            can_grant = True
+        elif is_emergency and not rule.get("emergency_can_bypass"):
+            notes.append(f"Level {access_level} KHÔNG có emergency bypass. Phải follow quy trình chuẩn.")
+
         return {
-            "error": f"Tool '{tool_name}' execution failed: {e}",
+            "access_level": access_level,
+            "can_grant": can_grant,
+            "required_approvers": rule["required_approvers"],
+            "approver_count": len(rule["required_approvers"]),
+            "emergency_override": is_emergency and rule.get("emergency_can_bypass", False),
+            "notes": notes,
+            "source": "access_control_sop.txt",
         }
 
+    def tool_create_ticket(self,priority: str, title: str, description: str = "") -> dict:
+        """
+        Tạo ticket mới (MOCK — in log, không tạo thật).
+        """
+        mock_id = f"IT-{9900 + hash(title) % 99}"
+        ticket = {
+            "ticket_id": mock_id,
+            "priority": priority,
+            "title": title,
+            "description": description[:200],
+            "status": "open",
+            "created_at": datetime.now().isoformat(),
+            "url": f"https://jira.company.internal/browse/{mock_id}",
+            "note": "MOCK ticket — không tồn tại trong hệ thống thật",
+        }
+        print(f"  [MCP create_ticket] MOCK: {mock_id} | {priority} | {title[:50]}")
+        return ticket
+
+
+    def list_tools(self) -> list:
+        """
+        MCP discovery: trả về danh sách tools có sẵn.
+        Tương đương với `tools/list` trong MCP protocol.
+        """
+        return list(TOOL_SCHEMAS.values())
+
+
+    def dispatch_tool(self,tool_name: str, tool_input: dict) -> dict:
+        """
+        MCP execution: nhận tool_name và input, gọi tool tương ứng.
+        Tương đương với `tools/call` trong MCP protocol.
+
+        Args:
+            tool_name: tên tool (phải có trong TOOL_REGISTRY)
+            tool_input: input dict (phải match với tool's inputSchema)
+
+        Returns:
+            Tool output dict, hoặc error dict nếu thất bại
+        """
+        if tool_name not in self.TOOL_REGISTRY:
+            return {
+                "error": f"Tool '{tool_name}' không tồn tại. Available: {list(self.TOOL_REGISTRY.keys())}"
+            }
+
+        tool_fn = self.TOOL_REGISTRY[tool_name]
+        try:
+            timestamp = datetime.now().isoformat()
+            result = tool_fn(**tool_input)
+            return {
+                        "tool": tool_name,
+                        "input": tool_input,
+                        "output": result,
+                        "timestamp": timestamp
+                    }
+        except TypeError as e:
+            return {
+                "error": f"Invalid input for tool '{tool_name}': {e}",
+                "schema": TOOL_SCHEMAS[tool_name]["inputSchema"],
+            }
+        except Exception as e:
+            return {
+                "tool": tool_name,
+                "error": str(e),
+                "timestamp": timestamp
+            }
+
+    
+    
 
 # ─────────────────────────────────────────────
 # Test & Demo
 # ─────────────────────────────────────────────
 
 if __name__ == "__main__":
+    mcp = MockMCPServer()
     print("=" * 60)
     print("MCP Server — Tool Discovery & Test")
     print("=" * 60)
 
     # 1. Discover tools
     print("\n📋 Available Tools:")
-    for tool in list_tools():
+    for tool in mcp.list_tools():
         print(f"  • {tool['name']}: {tool['description'][:60]}...")
 
     # 2. Test search_kb
     print("\n🔍 Test: search_kb")
-    result = dispatch_tool("search_kb", {"query": "SLA P1 resolution time", "top_k": 2})
-    if result.get("chunks"):
-        for c in result["chunks"]:
+    result = mcp.dispatch_tool("search_kb", {"query": "SLA P1 resolution time", "top_k": 2})
+    if result.get("output"):
+        for c in result["output"]["chunks"]:
             print(f"  [{c.get('score', '?')}] {c.get('source')}: {c.get('text', '')[:70]}...")
     else:
         print(f"  Result: {result}")
 
     # 3. Test get_ticket_info
     print("\n🎫 Test: get_ticket_info")
-    ticket = dispatch_tool("get_ticket_info", {"ticket_id": "P1-LATEST"})
+    ticket = mcp.dispatch_tool("get_ticket_info", {"output.ticket_id": "P1-LATEST"})
     print(f"  Ticket: {ticket.get('ticket_id')} | {ticket.get('priority')} | {ticket.get('status')}")
     if ticket.get("notifications_sent"):
         print(f"  Notifications: {ticket['notifications_sent']}")
 
     # 4. Test check_access_permission
     print("\n🔐 Test: check_access_permission (Level 3, emergency)")
-    perm = dispatch_tool("check_access_permission", {
+    perm = mcp.dispatch_tool("check_access_permission", {
         "access_level": 3,
         "requester_role": "contractor",
         "is_emergency": True,
@@ -371,7 +408,7 @@ if __name__ == "__main__":
 
     # 5. Test invalid tool
     print("\n❌ Test: invalid tool")
-    err = dispatch_tool("nonexistent_tool", {})
+    err = mcp.dispatch_tool("nonexistent_tool", {})
     print(f"  Error: {err.get('error')}")
 
     print("\n✅ MCP server test done.")
