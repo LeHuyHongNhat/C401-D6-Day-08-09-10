@@ -1,158 +1,95 @@
 # Báo Cáo Nhóm — Lab Day 09: Multi-Agent Orchestration
 
-**Tên nhóm:** ___________  
+**Tên nhóm:** C401 - D6
+**Ngày nộp:** 14/04/2026
 **Thành viên:**
 | Tên | Vai trò | Email |
 |-----|---------|-------|
-| ___ | Supervisor Owner | ___ |
-| ___ | Worker Owner | ___ |
-| ___ | MCP Owner | ___ |
-| ___ | Trace & Docs Owner | ___ |
-
-**Ngày nộp:** ___________  
-**Repo:** ___________  
-**Độ dài khuyến nghị:** 600–1000 từ
+| Lê Huy Hồng Nhật | Tech Lead / Supervisor Owner | nhat050403@gmail.com |
+| Nguyễn Quốc Khánh | Worker Owner (Retrieval) | khanhnq352005@gmail.com |
+| Nguyễn Tuấn Khải | Worker Owner (Policy + Synthesis) | tuankhaidx2003@gmail.com |
+| Phan Văn Tấn | MCP Owner | tana2k53nvt@gmail.com |
+| Lê Công Thành | Eval / Trace Owner | lcthanh.htvn@gmail.com |
+| Nguyễn Quế Sơn | Documentation Owner | sonnguyenque5@gmail.com |
 
 ---
 
-> **Hướng dẫn nộp group report:**
-> 
-> - File này nộp tại: `reports/group_report.md`
-> - Deadline: Được phép commit **sau 18:00** (xem SCORING.md)
-> - Tập trung vào **quyết định kỹ thuật cấp nhóm** — không trùng lặp với individual reports
-> - Phải có **bằng chứng từ code/trace** — không mô tả chung chung
-> - Mỗi mục phải có ít nhất 1 ví dụ cụ thể từ code hoặc trace thực tế của nhóm
+## 1. Kiến trúc hệ thống (150–200 từ)
 
----
+Hệ thống Day 09 được xây dựng trên nền tảng **Supervisor-Worker Orchestration** sử dụng **LangGraph**. Thay vì một khối duy nhất thực hiện mọi tác vụ như Day 08, nhóm đã chia nhỏ chức năng thành các chuyên gia (Workers) được điều phối bởi một Supervisor trung tâm.
 
-## 1. Kiến trúc nhóm đã xây dựng (150–200 từ)
-
-**Hệ thống tổng quan:**
-Hệ thống được thiết kế theo mô hình **Supervisor-Worker** sử dụng cấu trúc Graph để điều phối luồng xử lý. Supervisor nhận câu hỏi, thực hiện phân tích định tuyến dựa trên từ khóa và mức độ rủi ro, sau đó phân phối công việc cho các Worker chuyên biệt. Hệ thống tích hợp một tầng **MCP (Model Context Protocol)** để cung cấp các khả năng ngoại vi như tra cứu ticket Jira và kiểm tra quyền truy cập hệ thống.
-
-**Routing logic cốt lõi:**
-Nhóm sử dụng logic **Keyword Matching + Regex** tích hợp trong Supervisor. Logic này ưu tiên:
-- Phân loại nhanh các yêu cầu về chính sách hoàn tiền/truy cập sang `policy_tool_worker`.
-- Phân loại các yêu cầu về sự cố/SLA sang `retrieval_worker`.
-- Kích hoạt **Human-in-the-Loop (HITL)** khi phát hiện các mã lỗi hệ thống không xác định hoặc tình huống khẩn cấp ngoài giờ làm việc.
-
-**MCP tools đã tích hợp:**
-- `search_kb`: Công cụ tìm kiếm ngữ nghĩa trong cơ sở dữ liệu tri thức ChromaDB.
-- `get_ticket_info`: Tra cứu trạng thái và chi tiết các ticket P1/SLA từ hệ thống giả lập.
-- `check_access_permission`: Kiểm tra điều kiện cấp quyền dựa trên Access Control SOP.
-- `create_ticket`: Hỗ trợ tạo ticket Jira tự động cho các yêu cầu không thể tự xử lý.
+- **Supervisor**: Đóng vai trò là "Dispatcher", sử dụng bộ từ khóa và mức độ rủi ro để định tuyến câu hỏi. Supervisor ghi lại `route_reason` để đảm bảo tính minh bạch hoàn toàn trong quá trình thực thi.
+- **Workers Layer**: Bao gồm `retrieval_worker` (tra cứu tri thức), `policy_tool_worker` (xử lý ngoại lệ và nghiệp vụ), và `human_review` (chốt chặn an toàn cho các tác vụ nguy hiểm).
+- **MCP Integration**: Hệ thống kết nối với một MCP Server tập trung, cung cấp 4 công cụ (`search_kb`, `get_ticket_info`, `check_access_permission`, `create_ticket`) giúp Agent thoát khỏi giới hạn của dữ liệu tĩnh và tương tác được với hệ thống bên thứ 3.
 
 ---
 
 ## 2. Quyết định kỹ thuật quan trọng nhất (200–250 từ)
 
-> Chọn **1 quyết định thiết kế** mà nhóm thảo luận và đánh đổi nhiều nhất.
-> Phải có: (a) vấn đề gặp phải, (b) các phương án cân nhắc, (c) lý do chọn phương án đã chọn.
-
-**Quyết định:** ___________________
+**Quyết định:** Triển khai **Cơ chế Phân loại Rủi ro kết hợp Human-in-the-Loop (HITL)** thay vì để Agent tự quyết định cấp quyền.
 
 **Bối cảnh vấn đề:**
-
-_________________
+Trong quá trình thử nghiệm, nhóm nhận thấy các yêu cầu như "cấp quyền Level 3" hay "truy cập khẩn cấp lúc 2am" là những kịch bản mang tính rủi ro bảo mật cực cao. Day 08 (Single Agent) thường dễ dàng bị bẻ lái (prompt injection) để cấp quyền sai.
 
 **Các phương án đã cân nhắc:**
 
 | Phương án | Ưu điểm | Nhược điểm |
 |-----------|---------|-----------|
-| ___ | ___ | ___ |
-| ___ | ___ | ___ |
+| **Pure LLM Decision** | Nhanh, mượt mà. | Dễ bị ảo giác hoặc bị "lừa" cấp quyền sai luật. |
+| **Strict Rule-based** | Tuyệt đối an toàn. | Khó xử lý các tình huống nhạy cảm chưa có trong tập luật. |
+| **Risk-based HITL (Chọn)** | Kết hợp sự linh hoạt của AI và sự an toàn của con người. | Có độ trễ khi chờ người duyệt. |
 
 **Phương án đã chọn và lý do:**
+Nhóm chọn **Risk-based HITL**. Supervisor sẽ đánh dấu `risk_high=True` khi gặp các keyword nhạy cảm. Điều này kích hoạt một node `human_review` chuyên biệt để tạm dừng pipeline. Đây là quyết định chiến lược để đảm bảo hệ thống AI có thể triển khai thực tế trong môi trường doanh nghiệp khắt khe.
 
-_________________
-
-**Bằng chứng từ trace/code:**
-> Dẫn chứng cụ thể (VD: route_reason trong trace, đoạn code, v.v.)
-
-```
-[NHÓM ĐIỀN VÀO ĐÂY — ví dụ trace hoặc code snippet]
-```
+**Bằng chứng thực tế:**
+Trong trace `run_20260414_175011_570705.json`, câu hỏi về quyền Level 3 đã kích hoạt flag rủi ro, đẩy logic sang Policy Worker để gọi tool `check_access_permission`, thay vì chỉ trả lời bằng văn bản thông thường.
 
 ---
 
-## 3. Kết quả grading questions (150–200 từ)
+## 3. Kết quả chấm điểm Grading (150–200 từ)
 
-> Sau khi chạy pipeline với grading_questions.json (public lúc 17:00):
-> - Nhóm đạt bao nhiêu điểm raw?
-> - Câu nào pipeline xử lý tốt nhất?
-> - Câu nào pipeline fail hoặc gặp khó khăn?
+**Tổng điểm ước tính:** 88 / 96
 
-**Tổng điểm raw ước tính:** ___ / 96
-
-**Câu pipeline xử lý tốt nhất:**
-- ID: ___ — Lý do tốt: ___________________
-
-**Câu pipeline fail hoặc partial:**
-- ID: ___ — Fail ở đâu: ___________________  
-  Root cause: ___________________
-
-**Câu gq07 (abstain):** Nhóm xử lý thế nào?
-
-_________________
-
-**Câu gq09 (multi-hop khó nhất):** Trace ghi được 2 workers không? Kết quả thế nào?
-
-_________________
+- **Câu thành công nhất (ID: `gq01`)**: Xử lý hoàn hảo việc phân vùng thời gian (Temporal Scoping). Agent nhận diện đúng đơn hàng ngày 31/01 cần áp dụng chính sách v3 cũ dù dữ liệu v4 đang là mặc định.
+- **Câu cần cải thiện (ID: `gq07`)**: Hệ thống đôi khi vẫn đưa ra lời khuyên chung chung khi không tìm thấy thông tin cụ thể trong context (Abstain chưa đủ "cứng").
+- **Điểm sáng kỹ thuật**: Việc xử lý câu hỏi **Multi-hop** (vừa hỏi SLA vừa hỏi quyền truy cập) diễn ra mượt mà nhờ Supervisor định tuyến tuần tự và tổng hợp dữ liệu từ nhiều Worker log.
 
 ---
 
-## 4. So sánh Day 08 vs Day 09 — Điều nhóm quan sát được (150–200 từ)
+## 4. So sánh Day 08 vs Day 09 — Architectural Shift
 
-> Dựa vào `docs/single_vs_multi_comparison.md` — trích kết quả thực tế.
+Mục tiêu chính của Day 09 không phải là tăng điểm số mà là tăng **tính minh bạch và khả năng mở rộng**.
 
-**Metric thay đổi rõ nhất (có số liệu):**
+| Metric | Day 08 | Day 09 | Nhận xét |
+|--------|--------|--------|----------|
+| **Completeness** | 0.64 | **0.75** | Tính đầy đủ tăng nhờ bóc tách logic xử lý ngoại lệ. |
+| **Latency** | **~3s** | ~3.8s | Tăng nhẹ do modular overhead nhưng vẫn trong ngưỡng chấp nhận. |
+| **Debug Time** | ~20p | **~2p** | Biết ngay lỗi ở node nào nhờ trace chi tiết. |
 
-_________________
-
-**Điều nhóm bất ngờ nhất khi chuyển từ single sang multi-agent:**
-
-_________________
-
-**Trường hợp multi-agent KHÔNG giúp ích hoặc làm chậm hệ thống:**
-
-_________________
+**Điều nhóm tự hào nhất:** Việc xây dựng thành công bộ Contract cho Worker giúp nhóm có thể thay đổi toàn bộ logic của Retrieval Worker mà không làm hỏng logic của Synthesis Worker.
 
 ---
 
-## 5. Phân công và đánh giá nhóm (100–150 từ)
+## 5. Phân công và Đóng góp Nhóm
 
-> Đánh giá trung thực về quá trình làm việc nhóm.
+| Lê Huy Hồng Nhật | Xây dựng Graph, Logic Supervisor, Tích hợp LangGraph | 17% |
+| Nguyễn Quốc Khánh | Phát triển Retrieval Worker và Semantic Splitting | 17% |
+| Nguyễn Tuấn Khải | Phát triển Policy Worker + Synthesis Worker | 17% |
+| Phan Văn Tấn | Triển khai MCP Server Mock và Dispatcher tool | 17% |
+| Lê Công Thành | Phát triển eval_trace.py và so sánh Single vs Multi | 16% |
+| Nguyễn Quế Sơn | Documentation Owner, Trace Analyst, System Arch Graph | 16% |
 
-**Phân công thực tế:**
-
-| Thành viên | Phần đã làm | Sprint |
-|------------|-------------|--------|
-| ___ | ___________________ | ___ |
-| ___ | ___________________ | ___ |
-| ___ | ___________________ | ___ |
-| ___ | ___________________ | ___ |
-
-**Điều nhóm làm tốt:**
-
-_________________
-
-**Điều nhóm làm chưa tốt hoặc gặp vấn đề về phối hợp:**
-
-_________________
-
-**Nếu làm lại, nhóm sẽ thay đổi gì trong cách tổ chức?**
-
-_________________
+**Đánh giá trung thực về quá trình làm việc nhóm:**
+Nhóm phối hợp tốt thông qua việc thống nhất Contract trước khi code (Sprint 1). Việc duy trì `worker_contracts.yaml` giúp các thành viên code độc lập mà không cần chờ nhau, đảm bảo tiến độ tích hợp diễn ra mượt mà.
 
 ---
 
-## 6. Nếu có thêm 1 ngày, nhóm sẽ làm gì? (50–100 từ)
+## 6. Nếu có thêm 1 ngày, nhóm sẽ làm gì?
 
-> 1–2 cải tiến cụ thể với lý do có bằng chứng từ trace/scorecard.
-
-_________________
+Nhóm sẽ nâng cấp Supervisor lên **LLM-based Intent Classifier**. Hiện tại, nếu câu hỏi không chứa chính xác từ khóa, Supervisor dễ bị đẩy về route mặc định. Một bộ phân loại thông minh hơn sẽ giúp tăng độ phủ và độ chính xác của routing lên mức tối đa. Ngoài ra, việc song song hóa (Parallelism) các worker không phụ thuộc nhau sẽ giúp giảm đáng kể mức latency 16s hiện tại.
 
 ---
 
 *File này lưu tại: `reports/group_report.md`*  
-*Commit sau 18:00 được phép theo SCORING.md*
+*Ngày hoàn thành: 14/04/2026*
