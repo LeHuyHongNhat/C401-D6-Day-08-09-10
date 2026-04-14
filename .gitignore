@@ -17,16 +17,15 @@ day08/lab/data/chroma_db/
 day08/lab/data/test_questions_extended.json
 day08/lab/test_retrieval.py
 
-# Day 09
-day09/lab/artifacts/traces/
+# Day 09 — DB/index local (KHÔNG ignore artifacts/traces, grading_run.jsonl — cần commit theo SCORING.md)
 day09/lab/chroma_db/
-day09/lab/artifacts/eval_report.json
-day09/lab/artifacts/grading_run.jsonl
-artifacts/
-*.json
+# Chạy script từ root đôi khi tạo chroma ở root
+/chroma_db/
+
+# Tùy chọn: ẩn grading_questions.json trước giờ public; xóa dòng # khi cần ignore
+# day09/lab/data/grading_questions.json
 
 # Python environment and project files
 .python-version
 pyproject.toml
 main.py
-.venv/

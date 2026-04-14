@@ -1,0 +1,89 @@
+{
+  "task": "Nhân viên được làm remote tối đa mấy ngày mỗi tuần?",
+  "route_reason": "default route — general knowledge query",
+  "risk_high": false,
+  "needs_tool": false,
+  "hitl_triggered": false,
+  "retrieved_chunks": [
+    {
+      "text": "4.1 Điều kiện remote:\n- Nhân viên sau probation period có thể làm remote tối đa 2 ngày/tuần.\n- Team Lead phải phê duyệt lịch remote qua HR Portal.\n- Ngày onsite bắt buộc: Thứ 3 và Thứ 5 theo lịch team.\n\n4.2 Yêu cầu kỹ thuật khi remote:\n- Kết nối VPN bắt buộc khi làm việc với hệ thống nội bộ.\n- Camera bật trong các cuộc họp team.",
+      "source": "hr_leave_policy.txt",
+      "section": "Phần 4: Remote work policy",
+      "score": 0.6723,
+      "metadata": {
+        "section": "Phần 4: Remote work policy",
+        "source": "hr_leave_policy.txt",
+        "effective_date": "2026-01-01",
+        "department": "HR"
+      }
+    },
+    {
+      "text": "1.1 Nghỉ phép năm (Annual Leave):\n- Số ngày: 12 ngày/năm cho nhân viên dưới 3 năm kinh nghiệm.\n- Số ngày: 15 ngày/năm cho nhân viên từ 3-5 năm kinh nghiệm.\n- Số ngày: 18 ngày/năm cho nhân viên trên 5 năm kinh nghiệm.\n- Chuyển năm sau: Tối đa 5 ngày phép năm chưa dùng được chuyển sang năm tiếp theo.\n\n1.2 Nghỉ ốm (Sick Leave):\n- Số ngày: 10 ngày/năm có trả lương.\n- Yêu cầu: Thông báo cho Line Manager trước 9:00 sáng ngày nghỉ.\n- Nếu nghỉ trên 3 ngày liên tiếp: Cần giấy tờ y tế từ bệnh viện.\n\n1.3 Nghỉ thai sản:\n- Nghỉ sinh con: 6 tháng theo quy định Luật Lao động.\n- Nghỉ nuôi con nhỏ: 1 tiếng/ngày trong 12 tháng đầu sau sinh.\n\n1.4 Nghỉ lễ tết:\nTheo lịch nghỉ lễ quốc gia do HR công bố hàng năm vào tháng 12.",
+      "source": "hr_leave_policy.txt",
+      "section": "Phần 1: Các loại nghỉ phép",
+      "score": 0.5384,
+      "metadata": {
+        "source": "hr_leave_policy.txt",
+        "section": "Phần 1: Các loại nghỉ phép",
+        "department": "HR",
+        "effective_date": "2026-01-01"
+      }
+    },
+    {
+      "text": "Level 1 — Read Only:\nÁp dụng cho: Tất cả nhân viên mới trong 30 ngày đầu.\nPhê duyệt: Line Manager.\nThời gian xử lý: 1 ngày làm việc.\n\nLevel 2 — Standard Access:\nÁp dụng cho: Nhân viên chính thức đã qua thử việc.\nPhê duyệt: Line Manager + IT Admin.\nThời gian xử lý: 2 ngày làm việc.\n\nLevel 3 — Elevated Access:\nÁp dụng cho: Team Lead, Senior Engineer, Manager.\nPhê duyệt: Line Manager + IT Admin + IT Security.\nThời gian xử lý: 3 ngày làm việc.\n\nLevel 4 — Admin Access:\nÁp dụng cho: DevOps, SRE, IT Admin.\nPhê duyệt: IT Manager + CISO.\nThời gian xử lý: 5 ngày làm việc.\nYêu cầu thêm: Training bắt buộc về security policy.",
+      "source": "access_control_sop.txt",
+      "section": "Section 2: Phân cấp quyền truy cập",
+      "score": 0.5215,
+      "metadata": {
+        "source": "access_control_sop.txt",
+        "department": "IT Security",
+        "section": "Section 2: Phân cấp quyền truy cập",
+        "effective_date": "2026-01-01"
+      }
+    }
+  ],
+  "retrieved_sources": [
+    "hr_leave_policy.txt",
+    "access_control_sop.txt"
+  ],
+  "policy_result": {},
+  "mcp_tools_used": [],
+  "final_answer": "Nhân viên sau probation period có thể làm remote tối đa 2 ngày/tuần. Lịch remote phải được Team Lead phê duyệt qua HR Portal. Ngày onsite bắt buộc là Thứ 3 và Thứ 5 theo lịch team [1].",
+  "sources": [
+    "hr_leave_policy.txt",
+    "access_control_sop.txt"
+  ],
+  "confidence": 0.58,
+  "history": [
+    "[supervisor] route=retrieval_worker | reason=default route — general knowledge query",
+    "[retrieval_worker] retrieved 3 chunks from ['hr_leave_policy.txt', 'access_control_sop.txt']",
+    "[synthesis_worker] answer generated, confidence=0.58, sources=['hr_leave_policy.txt', 'access_control_sop.txt']"
+  ],
+  "worker_io_logs": [
+    {
+      "worker": "synthesis_worker",
+      "input": {
+        "task": "Nhân viên được làm remote tối đa mấy ngày mỗi tuần?",
+        "chunks_count": 3,
+        "has_policy": false
+      },
+      "output": {
+        "answer_length": 184,
+        "sources": [
+          "hr_leave_policy.txt",
+          "access_control_sop.txt"
+        ],
+        "confidence": 0.58
+      },
+      "error": null
+    }
+  ],
+  "workers_called": [
+    "retrieval_worker",
+    "synthesis_worker"
+  ],
+  "supervisor_route": "retrieval_worker",
+  "latency_ms": 2252,
+  "run_id": "run_20260414_174936_361452",
+  "question_id": "q05"
+}

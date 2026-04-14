@@ -1,126 +1,96 @@
-# System Architecture — Lab Day 09
+# System Architecture — Lab Day 09: Multi-Agent Orchestration
 
-**Nhóm:** AI in Action (AICB-P1)
+**Nhóm:** C401 - D6
 **Ngày:** 14/04/2026
-**Version:** 1.0
+**Framework:** LangGraph / StateGraph
 
 ---
 
-## 1. Tổng quan kiến trúc
+## 1. Mô hình kiến trúc (Orchestration Pattern)
 
-Hệ thống trợ lý nội bộ Day 09 được tái cấu trúc từ một RAG pipeline đơn dạng (monolith) sang mô hình **Supervisor-Worker**. Kiến trúc này tách biệt tầng điều hướng (routing) và tầng xử lý nghiệp vụ (skill workers), cho phép hệ thống mở rộng linh hoạt và dễ dàng kiểm soát luồng dữ liệu.
+Hệ thống trợ lý nội bộ Day 09 được tái cấu trúc từ mô hình Monolith (Day 08) sang mô hình **Supervisor-Worker** sử dụng framework **LangGraph**. Sự thay đổi này giải quyết triệt để bài toán "hộp đen" bằng cách tách biệt tầng điều hướng (Orchestration) và tầng thực thi chuyên biệt (Execution).
 
-**Pattern đã chọn:** Supervisor-Worker
-**Lý do chọn pattern này (thay vì single agent):**
-1. **Khả năng gỡ lỗi (Debuggability):** Trace logs ghi lại từng bước quyết định của Supervisor, giúp xác định lỗi do định tuyến sai hay do worker xử lý kém.
-2. **Tính chuyên môn hóa:** Mỗi Worker chịu trách nhiệm một domain cụ thể (Retrieval, Policy, Synthesis), giúp prompt ngắn gọn và chính xác hơn.
-3. **Mở rộng qua MCP:** Dễ dàng tích hợp thêm các công cụ bên ngoài mà không cần sửa đổi logic cốt lõi của Agent.
-
----
-
-## 2. Sơ đồ Pipeline
-
-Kiến trúc hệ thống sử dụng một Supervisor duy nhất để phân luồng dựa trên từ khóa và mức độ rủi ro của task.
+### Sơ đồ Pipeline thực thi
+Kiến trúc hệ thống sử dụng một Supervisor duy nhất để phân luồng dựa trên intent, từ khóa và mức độ rủi ro của task.
 
 ```mermaid
 graph TD
     User([User Query]) --> Supervisor[Supervisor Node]
-    Supervisor --> |route_reason| Decision{Routing Decision}
     
-    Decision --> |SLA/P1/Ticket| Retrieval[Retrieval Worker]
-    Decision --> |Refund/Access/Policy| Policy[Policy Tool Worker]
-    Decision --> |Unknown Error| Human[Human Review]
+    %% Routing Logic
+    Supervisor -- "Mã lỗi lạ (ERR-*)" --> HITL[Human Review Node]
+    Supervisor -- "Hoàn tiền / Cấp quyền" --> PW[Policy Tool Worker]
+    Supervisor -- "Tra cứu SLA / Quy trình" --> RW[Retrieval Worker]
+    Supervisor -- "Mặc định" --> RW
     
-    Retrieval --> Synthesis[Synthesis Worker]
-    Policy --> |MCP Tools Call| MCP[(MCP Server)]
-    MCP --> Policy
-    Policy --> Synthesis
+    %% Execution Chain
+    HITL --> |Bàn giao| RW
+    PW --> |Cung cấp Rule/MCP| Synthesis[Synthesis Worker]
+    RW --> |Cung cấp Evidence| Synthesis
     
+    %% Output
     Synthesis --> Output([Final Answer + Citations])
+
+    subgraph "Shared State (AgentState)"
+        direction LR
+        State[Shared Data Pool] --- Log[Worker I/O Logs]
+    end
 ```
 
 ---
 
-## 3. Vai trò từng thành phần
+## 2. Chi tiết các thành phần (Component Roles)
 
-### Supervisor (`graph.py`)
+### 2.1 Supervisor (The Orchestrator)
+Sử dụng cơ chế **Priority-based Keyword Routing**. Đây là quyết định quan trọng để đảm bảo tính dự đoán (Predictability) và tốc độ xử lý vượt trội so với việc dùng LLM để phân loại intent.
+- **Quy tắc ưu tiên (Priority Hierarchy)**: `Error Escalation (HITL) > Policy Check > Retrieval`.
+- **Logic**: Nếu một câu hỏi vừa chứa "SLA" vừa chứa "ERR-403", hệ thống sẽ ưu tiên escalate lên người dùng trước thay vì chỉ tra cứu SLA.
 
-| Thuộc tính | Mô tả |
-|-----------|-------|
-| **Nhiệm vụ** | Phân tích câu hỏi, quyết định Worker phù hợp và đánh giá mức độ rủi ro. |
-| **Input** | `task` (câu hỏi từ user). |
-| **Output** | `supervisor_route`, `route_reason`, `risk_high`, `needs_tool`. |
-| **Routing logic** | Dựa trên keyword-matching hỗ trợ bởi regex để phân loại (SLA, Refund, Access Control). |
-| **HITL condition** | Kích hoạt khi gặp mã lỗi không rõ (ERR-xxx) hoặc từ khóa khẩn cấp/2am. |
+### 2.2 Policy Tool Worker (The Rule-Enforcer)
+Phụ trách các logic nghiệp vụ phức tạp với 4 chiều kiểm soát ngoại lệ (Exception Scoping):
+1.  **Temporal Scoping**: Nhận diện đơn hàng trước 01/02/2026 để cảnh báo về chính sách v3.
+2.  **Product Exception**: Chặn hoàn tiền tự động cho hàng kỹ thuật số (License, Subscription).
+3.  **State Exception**: Kiểm tra trạng thái sản phẩm (đã kích hoạt/đã mở seal).
+4.  **Tool Integration**: Trực tiếp gọi MCP Tools (`check_access_permission`, `search_kb`) để lấy dữ liệu động.
 
-### Retrieval Worker (`workers/retrieval.py`)
+### 2.3 Retrieval Worker (The Evidence Gatherer)
+Kết nối trực tiếp với **ChromaDB** phục vụ tìm kiếm ngữ nghĩa (Dense Retrieval). Worker này được giữ trạng thái **Stateless**, đảm bảo có thể scale độc lập khi lượng tài liệu tăng lên.
 
-| Thuộc tính | Mô tả |
-|-----------|-------|
-| **Nhiệm vụ** | Truy xuất các đoạn văn bản (chunks) có liên quan nhất từ cơ sở dữ liệu tri thức. |
-| **Embedding model** | `text-embedding-3-small` (OpenAI) hoặc `all-MiniLM-L6-v2`. |
-| **Top-k** | Default k=3 (có thể điều chỉnh qua state). |
-| **Stateless?** | Yes, có thể gọi độc lập để kiểm tra độ phủ nguồn. |
-
-### Policy Tool Worker (`workers/policy_tool.py`)
-
-| Thuộc tính | Mô tả |
-|-----------|-------|
-| **Nhiệm vụ** | Kiểm tra các quy tắc chính sách, phát hiện ngoại lệ (e.g. Flash Sale) và gọi công cụ ngoài. |
-| **MCP tools gọi** | `search_kb`, `get_ticket_info`, `check_access_permission`. |
-| **Exception cases xử lý** | Flash Sale, Digital products, Activated products, Temporal scoping (v3 vs v4). |
-
-### Synthesis Worker (`workers/synthesis.py`)
-
-| Thuộc tính | Mô tả |
-|-----------|-------|
-| **LLM model** | `gpt-4o-mini`. |
-| **Temperature** | 0 (để đảm bảo tính nhất quán và chính xác). |
-| **Grounding strategy** | Chỉ sử dụng thông tin từ `retrieved_chunks` và `policy_result` được cung cấp. |
-| **Abstain condition** | Khi không có context liên quan hoặc mức độ tin cậy (`confidence`) < 0.4. |
-
-### MCP Server (`mcp_server.py`)
-
-| Tool | Input | Output |
-|------|-------|--------|
-| search_kb | query, top_k | chunks, sources |
-| get_ticket_info | ticket_id | Chi tiết ticket Jira, tình trạng P1, escalation log |
-| check_access_permission | access_level, role, is_emergency | Kết quả can_grant, danh sách người phê duyệt |
-| create_ticket | priority, title, desc | ticket_id, URL Jira (MOCK) |
+### 2.4 Synthesis Worker (The Grounded Reasoner)
+Đóng vai trò là "chốt chặn cuối cùng" chống ảo giác. 
+- **System Prompt**: Chỉ thị nghiêm ngặt việc chỉ sử dụng context từ các worker trước đó. 
+- **Citation**: Bắt buộc trích dẫn nguồn `[file_name]` cho mọi luận điểm quan trọng.
 
 ---
 
-## 4. Shared State Schema
+## 3. Shared State Schema (AgentState)
 
-Hệ thống sử dụng một `AgentState` duy nhất để truyền thông tin giữa các nodes.
+Hệ thống sử dụng một `TypedDict` duy nhất để truyền thông tin, giúp duy trì tính minh bạch (Transparency) của dữ liệu:
 
-| Field | Type | Mô tả | Ai đọc/ghi |
-|-------|------|-------|-----------|
-| task | str | Câu hỏi gốc từ user | Supervisor (đọc) |
-| supervisor_route | str | Tên worker được chọn để xử lý | Supervisor (ghi) |
-| route_reason | str | Giải thích chi tiết lý do định tuyến | Supervisor (ghi) |
-| retrieved_chunks | list | Danh sách bằng chứng trích xuất từ ChromaDB | Retrieval (ghi), Synthesis (đọc) |
-| policy_result | dict | Kết quả phân tích ngoại lệ và quy định | Policy (ghi), Synthesis (đọc) |
-| mcp_tools_used | list | Lịch sử các tool calls qua giao thức MCP | Policy (ghi) |
-| final_answer | str | Câu trả lời cuối cùng có kèm trích dẫn | Synthesis (ghi) |
-| confidence | float | Điểm tin cậy của câu trả lời (0.0 - 1.0) | Synthesis (ghi) |
-| history | list | Tuyến vết hoạt động của toàn hệ thống | Tất cả (append) |
+| Field | Type | Ý nghĩa kỹ thuật |
+|-------|------|----------------|
+| `task` | `str` | Query gốc của người dùng. |
+| `route_reason` | `str` | **Lý do định tuyến** (Phục vụ debug và audit). |
+| `risk_high` | `bool` | Cờ rủi ro kích hoạt HITL logic. |
+| `policy_result` | `dict` | Kết quả phân tích ngoại lệ (Flash Sale, Digital, v3/v4). |
+| `worker_io_logs` | `list` | Lưu vết chính xác JSON Input/Output của từng Worker (Mandatory for Grading). |
+| `latency_ms` | `int` | Thời gian thực thi của luồng. |
 
 ---
 
-## 5. Lý do chọn Supervisor-Worker so với Single Agent (Day 08)
+## 4. Đánh giá thiết kế: Day 08 vs Day 09
 
-| Tiêu chí | Single Agent (Day 08) | Supervisor-Worker (Day 09) |
-|----------|----------------------|--------------------------|
-| Debug khi sai | Khó — không rõ lỗi ở tầng retrieve hay reasoning | Dễ — trace ghi rõ supervisor_route và từng worker log |
-| Thêm capability mới | Phải sửa toàn bộ Prompt lớn, dễ gây side-effect | Thêm Worker mới hoặc MCP Tool không ảnh hưởng node khác |
-| Routing visibility | Không có sự minh bạch trong việc chọn logic | Minh bạch qua route_reason và mcp_tools_used |
-| Xử lý Multi-hop | Kém do context window bị loãng | Tốt nhờ phân tách bước tìm tài liệu và kiểm tra policy |
+| Tiêu chí | Single Agent (Day 08) | Multi-Agent (Day 09) | Tại sao? |
+|----------|----------------------|--------------------------|----------|
+| **Debuggability** | Khó | Rất dễ | Nhờ `route_reason` và log I/O tách biệt. |
+| **Tính chuyên sâu** | Trung bình | Cao | Từng Worker có Prompt chuyên biệt cho Domain đó. |
+| **Độ trễ** | Thấp (~3s) | Cao (~16s) | Đánh đổi thời gian gọi nhiều node để lấy tính chính xác. |
+| **Độ phủ Policy** | Dễ sót | Rất chặt chẽ | Policy Worker chuyên trách kiểm tra các ngoại lệ rẽ nhánh. |
 
 ---
 
-## 6. Giới hạn và điểm cần cải tiến
+## 5. Giới hạn hiện tại và Hướng phát triển
 
-1. **Định tuyến tĩnh**: Hiện tại tập trung vào keyword-matching, có thể nâng cấp lên LLM-based classifier để tăng độ linh hoạt.
-2. **Latency**: Mô hình multi-node tăng overhead thời gian gọi API so với monolith.
-3. **Mô phỏng MCP**: Hiện tại dùng Mock Server trong cùng process, cần chuyển sang HTTP server để đúng chuẩn protocol.
+1. **Routing**: Hiện tại dùng Keyword-matching. Nếu có thêm 1 ngày, nhóm sẽ dùng **LLM-based Intent Classifier** để xử lý các câu hỏi lắt léo hơn.
+2. **MCP Connectivity**: Toàn bộ Protocol đã sẵn sàng (Standard Tools), có thể chuyển từ Mock sang Production dễ dàng.
+3. **HITL**: Đã có Node Placeholder, có thể tích hợp Slack/Teams API để người dùng phê duyệt quyền trực tiếp.
