@@ -1,20 +1,29 @@
 .DS_Store
 *.swp
 *~
-
-# Grading questions — không public trước 17:00
-# day08/lab/data/grading_questions.json
-
-.env
-.vscode
 __pycache__/
 *.py[cod]
 
-# Kết quả chạy local — không push
+# Virtual Environment & Env files
+.venv/
+.env
+.vscode
+
+# Data & Index
+day08/lab/data/
+day08/lab/data/grading_questions.json
 day08/lab/data/bm25_index/
 day08/lab/data/chroma_db/
 day08/lab/data/test_questions_extended.json
 day08/lab/test_retrieval.py
+
+# Day 09
+day09/lab/artifacts/traces/
+day09/lab/chroma_db/
+day09/lab/artifacts/eval_report.json
+day09/lab/artifacts/grading_run.jsonl
+artifacts/
+*.json
 
 # Python environment and project files
 .python-version

@@ -11,65 +11,67 @@ Chạy thử:
 
 import json
 import os
-from datetime import datetime
-from typing import TypedDict, Literal, Optional
-
 import time
+from datetime import datetime
+from typing import TypedDict, List, Optional, Literal
+
+from dotenv import load_dotenv
 from langgraph.graph import StateGraph, START, END
+
+# Load environment variables
+load_dotenv()
 
 # ─────────────────────────────────────────────
 # 1. Shared State — dữ liệu đi xuyên toàn graph
 # ─────────────────────────────────────────────
 
+# 1. AgentState — Định nghĩa cấu trúc dữ liệu chung
 class AgentState(TypedDict):
     # Input
-    task: str                           # Câu hỏi đầu vào từ user
+    task: str                        # câu hỏi gốc từ user
 
-    # Supervisor decisions
-    route_reason: str                   # Lý do route sang worker nào
-    risk_high: bool                     # True → cần HITL hoặc human_review
-    needs_tool: bool                    # True → cần gọi external tool qua MCP
-    hitl_triggered: bool                # True → đã pause cho human review
+    # Routing
+    supervisor_route: str            # "retrieval_worker" | "policy_tool_worker" | "human_review"
+    route_reason: str                # VD: "task contains P1 SLA keyword"
+    risk_high: bool                  # True nếu cần human review
 
     # Worker outputs
-    retrieved_chunks: list              # Output từ retrieval_worker
-    retrieved_sources: list             # Danh sách nguồn tài liệu
-    policy_result: dict                 # Output từ policy_tool_worker
-    mcp_tools_used: list                # Danh sách MCP tools đã gọi
+    retrieved_chunks: List[dict]     # output của retrieval worker
+    policy_result: Optional[dict]    # output của policy worker
+    worker_io_log: List[dict]        # log I/O của từng worker
 
-    # Final output
-    final_answer: str                   # Câu trả lời tổng hợp
-    sources: list                       # Sources được cite
-    confidence: float                   # Mức độ tin cậy (0.0 - 1.0)
+    # MCP
+    mcp_tools_used: List[str]        # tên tools đã gọi
+    mcp_results: List[dict]          # kết quả từng MCP call
 
-    # Trace & history
-    history: list                       # Lịch sử các bước đã qua
-    workers_called: list                # Danh sách workers đã được gọi
-    supervisor_route: str               # Worker được chọn bởi supervisor
-    latency_ms: Optional[int]           # Thời gian xử lý (ms)
-    run_id: str                         # ID của run này
+    # Final
+    final_answer: str
+    sources: List[str]
+    confidence: float
+    hitl_triggered: bool
+    history: List[str]               # lịch sử các bước đã chạy (trace) - dùng string để tương thích main
+    latency_ms: Optional[int]
+    needs_tool: bool                 # Sprint 3: True nếu supervisor định gọi MCP tool
 
 
 def make_initial_state(task: str) -> AgentState:
     """Khởi tạo state cho một run mới."""
     return {
         "task": task,
+        "supervisor_route": "",
         "route_reason": "",
         "risk_high": False,
-        "needs_tool": False,
-        "hitl_triggered": False,
         "retrieved_chunks": [],
-        "retrieved_sources": [],
         "policy_result": {},
+        "worker_io_log": [],
         "mcp_tools_used": [],
+        "mcp_results": [],
         "final_answer": "",
         "sources": [],
         "confidence": 0.0,
+        "hitl_triggered": False,
         "history": [],
-        "workers_called": [],
-        "supervisor_route": "",
-        "latency_ms": None,
-        "run_id": f"run_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+        "needs_tool": False
     }
 
 
@@ -89,17 +91,14 @@ def supervisor_node(state: AgentState) -> AgentState:
     # Routing logic dựa trên keywords của README.md
     route = "retrieval_worker"
     route_reason = "default route — general knowledge query"
-    needs_tool = False
     risk_high = False
 
     if any(kw in task for kw in ["hoàn tiền", "refund", "flash sale", "license", "kỹ thuật số", "digital"]):
         route = "policy_tool_worker"
         route_reason = "task contains refund/policy keyword"
-        needs_tool = True
     elif any(kw in task for kw in ["cấp quyền", "access", "level 3", "level 2", "contractor", "emergency", "khẩn cấp"]):
         route = "policy_tool_worker"
         route_reason = "task contains access control keyword"
-        needs_tool = True
     elif any(kw in task for kw in ["p1", "escalation", "sla", "ticket", "on-call", "sự cố"]):
         route = "retrieval_worker"
         route_reason = "task contains SLA/incident keyword"
@@ -110,8 +109,16 @@ def supervisor_node(state: AgentState) -> AgentState:
 
     state["supervisor_route"] = route
     state["route_reason"] = route_reason
-    state["needs_tool"] = needs_tool
     state["risk_high"] = risk_high
+
+    # Sprint 3 Logic: quyết định dùng MCP tool hay không
+    needs_tool = False
+    if route == "policy_tool_worker" or "p1" in task:
+        needs_tool = True
+    
+    state["needs_tool"] = needs_tool
+    state["route_reason"] += f" | needs_tool={needs_tool}"
+
     state["history"].append(f"[supervisor] route={route} | reason={route_reason}")
 
     return state
@@ -137,20 +144,15 @@ def route_decision(state: AgentState) -> Literal["retrieval_worker", "policy_too
 def human_review_node(state: AgentState) -> AgentState:
     """
     HITL node: pause và chờ human approval.
-    Trong lab này, implement dưới dạng placeholder (in ra warning).
-
-    TODO Sprint 3 (optional): Implement actual HITL với interrupt_before hoặc
-    breakpoint nếu dùng LangGraph.
     """
     state["hitl_triggered"] = True
-    state["history"].append("[human_review] HITL triggered — awaiting human input")
-    state["workers_called"].append("human_review")
+    state["history"].append("[human_review] trigger_hitl")
 
     # Placeholder: tự động approve để pipeline tiếp tục
     print(f"\n⚠️  HITL TRIGGERED")
     print(f"   Task: {state['task']}")
     print(f"   Reason: {state['route_reason']}")
-    print(f"   Action: Auto-approving in lab mode (set hitl_triggered=True)\n")
+    print(f"   Action: Auto-approving in lab mode\n")
 
     # Sau khi human approve, route về retrieval để lấy evidence
     state["supervisor_route"] = "retrieval_worker"
@@ -163,13 +165,19 @@ def human_review_node(state: AgentState) -> AgentState:
 # 5. Import Workers
 # ─────────────────────────────────────────────
 
+# Thêm path để import từ project root
+import sys
+current_dir = os.path.dirname(os.path.abspath(__file__))
+if current_dir not in sys.path:
+    sys.path.append(current_dir)
+
 from workers.retrieval import run as retrieval_run
 from workers.policy_tool import run as policy_tool_run
 from workers.synthesis import run as synthesis_run
 
 
 def retrieval_worker_node(state: AgentState) -> AgentState:
-    """Wrapper gọi retrieval worker."""
+    """Wrapper gọi retrieval worker thật."""
     return retrieval_run(state)
 
 
@@ -244,7 +252,7 @@ def run_graph(task: str) -> AgentState:
 def save_trace(state: AgentState, output_dir: str = "./artifacts/traces") -> str:
     """Lưu trace ra file JSON."""
     os.makedirs(output_dir, exist_ok=True)
-    filename = f"{output_dir}/{state['run_id']}.json"
+    filename = f"{output_dir}/trace_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
     with open(filename, "w", encoding="utf-8") as f:
         json.dump(state, f, ensure_ascii=False, indent=2)
     return filename
@@ -270,10 +278,8 @@ if __name__ == "__main__":
         result = run_graph(query)
         print(f"  Route   : {result['supervisor_route']}")
         print(f"  Reason  : {result['route_reason']}")
-        print(f"  Workers : {result['workers_called']}")
         print(f"  Answer  : {result['final_answer'][:100]}...")
         print(f"  Confidence: {result['confidence']}")
-        print(f"  Latency : {result['latency_ms']}ms")
 
         # Lưu trace
         trace_file = save_trace(result)
