@@ -122,15 +122,21 @@ def run_grading_questions(questions_file: str = "data/grading_questions.json") -
                     "question": question_text,
                     "answer": result.get("final_answer", "PIPELINE_ERROR: no answer"),
                     "sources": result.get("retrieved_sources", []),
-                    "supervisor_route": result.get("supervisor_route", ""),
-                    "route_reason": result.get("route_reason", ""),
+                    "supervisor_route": result.get("supervisor_route", "") or "MISSING",
+                    "route_reason": result.get("route_reason", "") or "MISSING",
                     "workers_called": result.get("workers_called", []),
-                    "mcp_tools_used": [t.get("tool") for t in result.get("mcp_tools_used", [])],
+                    "mcp_tools_used": result.get("mcp_tools_used", []),
                     "confidence": result.get("confidence", 0.0),
                     "hitl_triggered": result.get("hitl_triggered", False),
                     "latency_ms": result.get("latency_ms"),
                     "timestamp": datetime.now().isoformat(),
                 }
+                if record["supervisor_route"] == "MISSING":
+                    print(f"  ⚠️ WARNING [{q_id}]: supervisor_route missing — sẽ bị trừ 20%/câu")
+                if record["route_reason"] == "MISSING":
+                    print(f"  ⚠️ WARNING [{q_id}]: route_reason missing — sẽ bị trừ 20%/câu")
+                if not record["workers_called"]:
+                    print(f"  ⚠️ WARNING [{q_id}]: workers_called missing (required)")
                 print(f"  ✓ route={record['supervisor_route']}, conf={record['confidence']:.2f}")
             except Exception as e:
                 record = {
@@ -185,8 +191,15 @@ def analyze_traces(traces_dir: str = "artifacts/traces") -> dict:
 
     traces = []
     for fname in trace_files:
-        with open(os.path.join(traces_dir, fname)) as f:
-            traces.append(json.load(f))
+        fpath = os.path.join(traces_dir, fname)
+        if os.path.getsize(fpath) == 0:
+            continue
+        with open(fpath) as f:
+            try:
+                traces.append(json.load(f))
+            except json.JSONDecodeError:
+                print(f"⚠️  Skipping invalid JSON: {fname}")
+                continue
 
     # Compute metrics
     routing_counts = {}
@@ -296,6 +309,38 @@ def save_eval_report(comparison: dict) -> str:
 # 6. CLI Entry Point
 # ─────────────────────────────────────────────
 
+def run_smoke_test():
+    """Chạy 3 câu smoke test và in ra warning."""
+    SMOKE_TESTS = [
+        ("sq01", "SLA ticket P1 là bao lâu?"),
+        ("sq02", "Khách hàng Flash Sale yêu cầu hoàn tiền"),
+        ("sq03", "Mức phạt tài chính vi phạm SLA P1?"),
+    ]
+    print("\n💨 Running SMOKE TESTS")
+    print("=" * 60)
+    for q_id, text in SMOKE_TESTS:
+        print(f"\n▶ Query [{q_id}]: {text}")
+        try:
+            res = run_graph(text)
+            r_route = res.get("supervisor_route", "")
+            r_reason = res.get("route_reason", "")
+            w_called = res.get("workers_called", [])
+            print(f"  Route: {r_route}")
+            print(f"  Reason: {r_reason}")
+            print(f"  Workers: {w_called}")
+            
+            if not r_route or r_route == "MISSING":
+                print(f"  ⚠️ WARNING: supervisor_route is MISSING!")
+            if not r_reason or r_reason == "MISSING":
+                print(f"  ⚠️ WARNING: route_reason is MISSING!")
+            if not w_called:
+                print(f"  ⚠️ WARNING: workers_called is empty!")
+            answer = res.get('final_answer') or ""
+            print(f"  Answer: {answer[:60]}...")
+        except Exception as e:
+            print(f"  ❌ ERROR: {e}")
+    print("\n✅ Smoke tests done.")
+
 def print_metrics(metrics: dict):
     """Print metrics đẹp."""
     if not metrics:
@@ -319,6 +364,7 @@ if __name__ == "__main__":
     parser.add_argument("--grading", action="store_true", help="Run grading questions")
     parser.add_argument("--analyze", action="store_true", help="Analyze existing traces")
     parser.add_argument("--compare", action="store_true", help="Compare single vs multi")
+    parser.add_argument("--smoke-test", action="store_true", help="Run quick smoke test")
     parser.add_argument("--test-file", default="data/test_questions.json", help="Test questions file")
     args = parser.parse_args()
 
@@ -328,6 +374,9 @@ if __name__ == "__main__":
         if log_file:
             print(f"\n✅ Grading log: {log_file}")
             print("   Nộp file này trước 18:00!")
+
+    elif args.smoke_test:
+        run_smoke_test()
 
     elif args.analyze:
         # Phân tích traces
