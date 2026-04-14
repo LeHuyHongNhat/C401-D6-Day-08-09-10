@@ -2,12 +2,17 @@
 *.swp
 *~
 __pycache__/
-day08/lab/.venv/
+*.py[cod]
+
+# Virtual Environment & Env files
 .venv/
-.antigravity/
+.env
+.vscode
 
 # Data & Index
 day08/lab/data/
 day08/lab/data/grading_questions.json
-
-.env
+day08/lab/data/bm25_index/
+day08/lab/data/chroma_db/
+day08/lab/data/test_questions_extended.json
+day08/lab/test_retrieval.py
