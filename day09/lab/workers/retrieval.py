@@ -18,7 +18,6 @@ Gọi độc lập để test:
 import os
 import sys
 from dotenv import load_dotenv
-
 load_dotenv()
 
 # ─────────────────────────────────────────────
@@ -37,14 +36,14 @@ def _get_embedding_fn():
     TODO Sprint 1: Implement dùng OpenAI hoặc Sentence Transformers.
     """
     # Option A: Sentence Transformers (offline, không cần API key)
-    try:
-        from sentence_transformers import SentenceTransformer
-        model = SentenceTransformer("paraphrase-multilingual-MiniLM-L12-v2")
-        def embed(text: str) -> list:
-            return model.encode([text])[0].tolist()
-        return embed
-    except ImportError:
-        pass
+    # try:
+    #     from sentence_transformers import SentenceTransformer
+    #     model = SentenceTransformer("all-MiniLM-L6-v2")
+    #     def embed(text: str) -> list:
+    #         return model.encode([text])[0].tolist()
+    #     return embed
+    # except ImportError:
+    #     pass
 
     # Option B: OpenAI (cần API key)
     try:
@@ -120,6 +119,7 @@ def retrieve_dense(query: str, top_k: int = DEFAULT_TOP_K) -> list:
                 "score": round(1 - dist, 4),  # cosine similarity
                 "metadata": meta,
             })
+        print(f"✅ ChromaDB retrieved {len(chunks)} chunks for query: '{query}'")
         return chunks
 
     except Exception as e:
