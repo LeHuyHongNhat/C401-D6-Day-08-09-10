@@ -29,25 +29,16 @@ WORKER_NAME = "policy_tool_worker"
 
 def _call_mcp_tool(tool_name: str, tool_input: dict) -> dict:
     """
-    Gọi MCP tool.
-
-    Sprint 3 TODO: Implement bằng cách import mcp_server hoặc gọi HTTP.
-
-    Hiện tại: Import trực tiếp từ mcp_server.py (trong-process mock).
+    Gọi MCP tool thông qua MockMCPServer.
     """
     from datetime import datetime
-
     try:
-        # TODO Sprint 3: Thay bằng real MCP client nếu dùng HTTP server
-        from mcp_server import dispatch_tool
-        result = dispatch_tool(tool_name, tool_input)
-        return {
-            "tool": tool_name,
-            "input": tool_input,
-            "output": result,
-            "error": None,
-            "timestamp": datetime.now().isoformat(),
-        }
+        from mcp_server import MockMCPServer
+        mcp = MockMCPServer()
+        result = mcp.dispatch_tool(tool_name, tool_input)
+        
+        # Format lại output để đồng nhất với contract cũ nếu cần
+        return result
     except Exception as e:
         return {
             "tool": tool_name,
@@ -213,7 +204,7 @@ def run(state: dict) -> dict:
         state["policy_result"] = {"error": str(e)}
         state["history"].append(f"[{WORKER_NAME}] ERROR: {e}")
 
-    state.setdefault("worker_io_logs", []).append(worker_io)
+    state.setdefault("worker_io_log", []).append(worker_io)
     return state
 
 

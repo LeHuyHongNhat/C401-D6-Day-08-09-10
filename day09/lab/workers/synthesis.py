@@ -194,7 +194,7 @@ def run(state: dict) -> dict:
         state["confidence"] = 0.0
         state["history"].append(f"[{WORKER_NAME}] ERROR: {e}")
 
-    state.setdefault("worker_io_logs", []).append(worker_io)
+    state.setdefault("worker_io_log", []).append(worker_io)
     return state
 
 

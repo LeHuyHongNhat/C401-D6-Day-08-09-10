@@ -52,6 +52,7 @@ class AgentState(TypedDict):
     history: List[str]               # lịch sử các bước đã chạy (trace) - dùng string để tương thích main
     latency_ms: Optional[int]
     needs_tool: bool                 # Sprint 3: True nếu supervisor định gọi MCP tool
+    workers_called: List[str]        # Sprint 4: Danh sách các worker đã tham gia xử lý
 
 
 def make_initial_state(task: str) -> AgentState:
@@ -71,7 +72,8 @@ def make_initial_state(task: str) -> AgentState:
         "confidence": 0.0,
         "hitl_triggered": False,
         "history": [],
-        "needs_tool": False
+        "needs_tool": False,
+        "workers_called": []
     }
 
 

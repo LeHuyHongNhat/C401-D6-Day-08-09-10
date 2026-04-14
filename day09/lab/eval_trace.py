@@ -121,11 +121,11 @@ def run_grading_questions(questions_file: str = "data/grading_questions.json") -
                     "id": q_id,
                     "question": question_text,
                     "answer": result.get("final_answer", "PIPELINE_ERROR: no answer"),
-                    "sources": result.get("retrieved_sources", []),
-                    "supervisor_route": result.get("supervisor_route", ""),
-                    "route_reason": result.get("route_reason", ""),
+                    "sources": result.get("sources", []),
+                    "supervisor_route": result.get("supervisor_route", "") or "MISSING",
+                    "route_reason": result.get("route_reason", "") or "MISSING",
                     "workers_called": result.get("workers_called", []),
-                    "mcp_tools_used": [t.get("tool") for t in result.get("mcp_tools_used", [])],
+                    "mcp_tools_used": [t.get("tool") if isinstance(t, dict) else t for t in result.get("mcp_tools_used", [])],
                     "confidence": result.get("confidence", 0.0),
                     "hitl_triggered": result.get("hitl_triggered", False),
                     "latency_ms": result.get("latency_ms"),
@@ -331,7 +331,7 @@ if __name__ == "__main__":
 
     if args.grading:
         # Chạy grading questions
-        log_file = run_grading_questions()
+        log_file = run_grading_questions(args.test_file)
         if log_file:
             print(f"\n✅ Grading log: {log_file}")
             print("   Nộp file này trước 18:00!")
