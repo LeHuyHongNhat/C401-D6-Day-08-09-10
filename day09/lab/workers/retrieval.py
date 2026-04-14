@@ -23,7 +23,7 @@ load_dotenv()
 # ─────────────────────────────────────────────
 
 WORKER_NAME = "retrieval_worker"
-DEFAULT_TOP_K = int(os.getenv("RETRIEVAL_TOP_K", 3))
+DEFAULT_TOP_K = int(os.getenv("RETRIEVAL_TOP_K", 5))
 
 # ALIAS_MAP: Hỗ trợ tìm kiếm theo từ khóa cũ/tên khác (Tham khảo Day 8)
 ALIAS_MAP = {

@@ -26,17 +26,17 @@
 ### 3. Sprint 3: Tuning & Debugging (Giờ thứ 3)
 *   **Công việc cụ thể:**
     - [x] Fix các lỗi phát sinh khi chạy full graph end-to-end. (Kết nối Retrieval vào Graph).
-    - [ ] Phân tích kết quả retrieval cho các câu hỏi test, đặc biệt là các câu multi-hop (cần chunks từ nhiều file).
-    - [ ] Chuẩn bị số liệu/nội dung cho báo cáo cá nhân.
+    - [x] Phân tích kết quả retrieval cho các câu hỏi test, đặc biệt là các câu multi-hop (cần chunks từ nhiều file).
+    - [x] Chuẩn bị số liệu/nội dung cho báo cáo cá nhân.
 *   **Phối hợp với:**
     - **Lê Huy Hồng Nhật:** Review code và tối ưu hóa logic nếu supervisor route sai do thiếu thông tin retrieval.
     - **Lê Công Thành:** Lấy dữ liệu trace từ `artifacts/traces/` để làm minh chứng cho báo cáo.
 
 ### 4. Sprint 4: Finalize & Reporting (Giờ thứ 4)
 *   **Công việc cụ thể:**
-    - [ ] Viết báo cáo cá nhân (`reports/individual/khanh.md`): 500-800 từ.
-    - [ ] **Trọng tâm phân tích:** Các câu hỏi `gq01` và `gq05` (liên quan đến SLA P1).
-    - [ ] Phân tích ảnh hưởng của chunking và search strategy đến chất lượng câu trả lời.
+    - [x] Viết báo cáo cá nhân (`reports/individual/khanh.md`): 500-800 từ.
+    - [x] **Trọng tâm phân tích:** Các câu hỏi `gq01` và `gq05` (liên quan đến SLA P1).
+    - [x] Phân tích ảnh hưởng của chunking và search strategy đến chất lượng câu trả lời.
 *   **Phối hợp với:**
     - **Nguyễn Quế Sơn (Documentation):** Cung cấp thông tin chi tiết về phần Retrieval để Sơn hoàn thiện `group_report.md` và các bản doc hệ thống.
     - **Nhật & Thành:** Kiểm tra checklist cuối cùng trước khi chạy Grading (17:00).

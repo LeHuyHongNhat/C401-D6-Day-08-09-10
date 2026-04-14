@@ -51,6 +51,7 @@ class AgentState(TypedDict):
     hitl_triggered: bool
     history: List[str]               # lịch sử các bước đã chạy (trace) - dùng string để tương thích main
     latency_ms: Optional[int]
+    needs_tool: bool                 # Sprint 3: True nếu supervisor định gọi MCP tool
 
 
 def make_initial_state(task: str) -> AgentState:
@@ -61,7 +62,7 @@ def make_initial_state(task: str) -> AgentState:
         "route_reason": "",
         "risk_high": False,
         "retrieved_chunks": [],
-        "policy_result": None,
+        "policy_result": {},
         "worker_io_log": [],
         "mcp_tools_used": [],
         "mcp_results": [],
@@ -69,7 +70,8 @@ def make_initial_state(task: str) -> AgentState:
         "sources": [],
         "confidence": 0.0,
         "hitl_triggered": False,
-        "history": []
+        "history": [],
+        "needs_tool": False
     }
 
 
@@ -108,6 +110,14 @@ def supervisor_node(state: AgentState) -> AgentState:
     state["supervisor_route"] = route
     state["route_reason"] = route_reason
     state["risk_high"] = risk_high
+
+    # Sprint 3 Logic: quyết định dùng MCP tool hay không
+    needs_tool = False
+    if route == "policy_tool_worker" or "p1" in task:
+        needs_tool = True
+    
+    state["needs_tool"] = needs_tool
+    state["route_reason"] += f" | needs_tool={needs_tool}"
 
     state["history"].append(f"[supervisor] route={route} | reason={route_reason}")
 
@@ -162,8 +172,8 @@ if current_dir not in sys.path:
     sys.path.append(current_dir)
 
 from workers.retrieval import run as retrieval_run
-# from workers.policy_tool import run as policy_tool_run
-# from workers.synthesis import run as synthesis_run
+from workers.policy_tool import run as policy_tool_run
+from workers.synthesis import run as synthesis_run
 
 
 def retrieval_worker_node(state: AgentState) -> AgentState:
@@ -173,32 +183,12 @@ def retrieval_worker_node(state: AgentState) -> AgentState:
 
 def policy_tool_worker_node(state: AgentState) -> AgentState:
     """Wrapper gọi policy/tool worker."""
-    # TODO Sprint 2: Thay bằng policy_tool_run(state)
-    state["history"].append("[policy_tool_worker] start")
-
-    # Placeholder output
-    state["policy_result"] = {
-        "verdict": "standard_policy",
-        "exception_case": None,
-        "evidence": "policy_refund_v4.txt",
-        "mcp_tool_called": None
-    }
-    state["history"].append("[policy_tool_worker] completed")
-    return state
+    return policy_tool_run(state)
 
 
 def synthesis_worker_node(state: AgentState) -> AgentState:
     """Wrapper gọi synthesis worker."""
-    # TODO Sprint 2: Thay bằng synthesis_run(state)
-    state["history"].append("[synthesis_worker] start")
-
-    # Placeholder output
-    chunks = state.get("retrieved_chunks", [])
-    state["final_answer"] = f"[PLACEHOLDER] Câu trả lời được tổng hợp từ {len(chunks)} chunks."
-    state["sources"] = list({c["source"] for c in chunks})
-    state["confidence"] = 0.75
-    state["history"].append(f"[synthesis_worker] completed | confidence={state['confidence']}")
-    return state
+    return synthesis_run(state)
 
 
 # ─────────────────────────────────────────────
