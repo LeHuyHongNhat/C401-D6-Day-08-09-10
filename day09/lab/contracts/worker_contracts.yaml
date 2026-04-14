@@ -1,0 +1,29 @@
+retrieval_worker:
+  input:
+    - task: str          # câu hỏi cần tìm
+  output:
+    - retrieved_chunks:  # list of {text, source, section, score}
+        type: List[dict]
+    - worker_io_log:     # append log entry
+        type: List[dict]
+
+policy_tool_worker:
+  input:
+    - task: str
+    - retrieved_chunks: List[dict]
+  output:
+    - policy_result:     # {verdict, exception_case, evidence, mcp_tool_called}
+        type: dict
+    - mcp_tools_used: List[str]
+    - worker_io_log: List[dict]
+
+synthesis_worker:
+  input:
+    - task: str
+    - retrieved_chunks: List[dict]
+    - policy_result: Optional[dict]
+  output:
+    - final_answer: str
+    - sources: List[str]
+    - confidence: float
+    - worker_io_log: List[dict]

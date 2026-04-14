@@ -13,16 +13,18 @@ from typing import List, Dict, Any
 import bm25s
 from langchain_core.documents import Document
 from langchain_openai import OpenAIEmbeddings
-from langchain_community.vectorstores import Chroma
+from langchain_chroma import Chroma
 from dotenv import load_dotenv
 
 load_dotenv()
 
 # --- CẤU HÌNH ---
-DOCS_DIR = os.getenv("DOCS_DIR", "./data/docs")
-CHROMA_PERSIST_DIR = os.getenv("CHROMA_PERSIST_DIR", "./data/chroma_db")
-BM25_INDEX_DIR = os.getenv("BM25_INDEX_DIR", "./data/bm25_index")
-EMBEDDING_MODEL = os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
+# Chạy index.py từ thư mục day08/lab/ để paths trong .env resolve đúng
+LAB_DIR            = Path(__file__).parent.resolve()
+DOCS_DIR           = str(LAB_DIR / os.getenv("DOCS_DIR", "./data/docs").lstrip("./"))
+CHROMA_PERSIST_DIR = str(LAB_DIR / os.getenv("CHROMA_PERSIST_DIR", "./data/chroma_db").lstrip("./"))
+BM25_INDEX_DIR     = str(LAB_DIR / os.getenv("BM25_INDEX_DIR", "./data/bm25_index").lstrip("./"))
+EMBEDDING_MODEL    = os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
 
 ALIAS_MAP = {
     "it/access-control-sop.md": [
@@ -143,7 +145,7 @@ def build_vector_index(documents: List[Document]) -> Chroma:
     """
     Build hoặc load Chroma vector store từ danh sách Document.
     """
-    # Sử dụng hàm helper để hỗ trợ fallback OpenAI/Gemini
+    # [Khai] build_vector_index — dùng get_embeddings_fn() của Khánh (OpenAI → Gemini fallback)
     embedding_fn = get_embeddings_fn()
     os.makedirs(CHROMA_PERSIST_DIR, exist_ok=True)
 
@@ -203,8 +205,7 @@ def list_chunks(vectorstore):
             print(f"  Source: {meta.get('source', 'N/A')}")
             print(f"  Section: {meta.get('section', 'N/A')}")
             print(f"  Date: {meta.get('effective_date', 'N/A')}")
-            preview = doc_content[:150].replace('\n', ' ')
-            print(f"  Preview: {preview}...")
+            print(f"  Preview: {doc_preview}...")
             
         print("="*50 + "\n")
     except Exception as e:
@@ -221,20 +222,24 @@ def build_all(docs_dir=DOCS_DIR):
     """
     # [Khai] build_all
     all_chunks: List[Document] = []
-    txt_files = list(Path(docs_dir).glob("*.txt"))
+    docs_path = Path(docs_dir)
 
-    if not txt_files:
-        print(f"[ERROR] Không tìm thấy file .txt trong {docs_dir}")
+    if not docs_path.exists():
+        print(f"[ERROR] Thư mục {docs_dir} không tồn tại.")
         return
 
-    for filepath in txt_files:
+    for filepath in docs_path.glob("*.txt"):
         content = filepath.read_text(encoding="utf-8")
         meta = parse_metadata(content)
         chunks = split_into_chunks(content, meta)
         all_chunks.extend(chunks)
         print(f"  {filepath.name}: {len(chunks)} chunks")
 
-    print(f"\nTotal: {len(all_chunks)} chunks từ {len(txt_files)} files")
+    if not all_chunks:
+        print("Không tìm thấy chunks nào để index.")
+        return
+
+    print(f"\nTotal: {len(all_chunks)} chunks từ 5 files")
 
     chroma = build_vector_index(all_chunks)
     bm25, docs = build_bm25_index(all_chunks)
