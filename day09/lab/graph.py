@@ -83,6 +83,9 @@ def supervisor_node(state: AgentState) -> AgentState:
     1. Route sang worker nào
     2. Có cần MCP tool không
     3. Có risk cao cần HITL không
+
+    Thứ tự ưu tiên (cao → thấp): human_review → policy_tool → retrieval → default.
+    Mã lỗi / HITL phải xét trước SLA để câu kiểu "P1 + ERR-403" không bị nuốt bởi nhánh retrieval.
     """
     task = state["task"].lower()
 
@@ -92,7 +95,11 @@ def supervisor_node(state: AgentState) -> AgentState:
     needs_tool = False
     risk_high = False
 
-    if any(kw in task for kw in ["hoàn tiền", "refund", "flash sale", "license", "kỹ thuật số", "digital"]):
+    if any(kw in task for kw in ["err-", "lỗi không rõ", "unknown error"]):
+        route = "human_review"
+        route_reason = "unrecognized error code — escalate to human"
+        risk_high = True
+    elif any(kw in task for kw in ["hoàn tiền", "refund", "flash sale", "license", "kỹ thuật số", "digital"]):
         route = "policy_tool_worker"
         route_reason = "task contains refund/policy keyword"
         needs_tool = True
@@ -103,10 +110,6 @@ def supervisor_node(state: AgentState) -> AgentState:
     elif any(kw in task for kw in ["p1", "escalation", "sla", "ticket", "on-call", "sự cố"]):
         route = "retrieval_worker"
         route_reason = "task contains SLA/incident keyword"
-    elif any(kw in task for kw in ["err-", "lỗi không rõ", "unknown error"]):
-        route = "human_review"
-        route_reason = "unrecognized error code — escalate to human"
-        risk_high = True
 
     state["supervisor_route"] = route
     state["route_reason"] = route_reason
