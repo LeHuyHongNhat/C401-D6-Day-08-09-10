@@ -1,50 +1,59 @@
 {
-  "generated_at": "2026-04-14T16:44:11.605374",
+  "generated_at": "2026-04-14T17:51:55.650864",
   "day08_single_agent": {
-    "total_questions": 15,
-    "avg_confidence": 0.0,
-    "avg_latency_ms": 0,
-    "abstain_rate": "?",
-    "multi_hop_accuracy": "?"
+    "total_questions": 10,
+    "avg_confidence": 0.885,
+    "avg_confidence_note": "Trung bình (faithfulness+relevance+context_recall+completeness)/20 — proxy so với confidence Day 09",
+    "avg_latency_ms": null,
+    "avg_scores": {
+      "faithfulness": 4.6,
+      "relevance": 4.2,
+      "context_recall": 4.8,
+      "completeness": 4.1
+    },
+    "abstain_rate": "1/1 (100%)",
+    "multi_hop_accuracy": "0.47 (trung bình completeness/5 trên 3 câu hard)",
+    "source": "derived:ab_comparison_test_questions.csv (baseline_dense)"
   },
   "day09_multi_agent": {
-    "total_traces": 43,
+    "total_traces": 15,
     "routing_distribution": {
-      "policy_tool_worker": "23/43 (53%)",
-      "retrieval_worker": "20/43 (46%)"
+      "retrieval_worker": "8/15 (53%)",
+      "policy_tool_worker": "7/15 (46%)"
     },
-    "avg_confidence": 0.525,
-    "avg_latency_ms": 16117,
-    "mcp_usage_rate": "21/43 (48%)",
-    "hitl_rate": "2/43 (4%)",
+    "avg_confidence": 0.515,
+    "avg_latency_ms": 3851,
+    "mcp_usage_rate": "7/15 (46%)",
+    "hitl_rate": "1/15 (6%)",
     "top_sources": [
       [
         "access_control_sop.txt",
-        20
-      ],
-      [
-        "policy_refund_v4.txt",
-        19
+        7
       ],
       [
         "sla_p1_2026.txt",
-        16
+        5
       ],
       [
-        "it_helpdesk_faq.txt",
-        6
+        "policy_refund_v4.txt",
+        5
       ],
       [
         "hr_leave_policy.txt",
-        4
+        3
+      ],
+      [
+        "it_helpdesk_faq.txt",
+        3
       ]
     ]
   },
   "analysis": {
-    "routing_visibility": "Day 09 có route_reason cho từng câu → dễ debug hơn Day 08",
-    "latency_delta": "TODO: Điền delta latency thực tế",
-    "accuracy_delta": "TODO: Điền delta accuracy thực tế từ grading",
-    "debuggability": "Multi-agent: có thể test từng worker độc lập. Single-agent: không thể.",
-    "mcp_benefit": "Day 09 có thể extend capability qua MCP không cần sửa core. Day 08 phải hard-code."
+    "confidence_delta": "avg proxy: Day09=0.515 vs Day08=0.885 → Δ -0.370 (confidence multi-agent vs điểm chất lượng 0–1 từ scorecard Day 08)",
+    "latency_delta": "Day09 avg latency=3851ms; Day08 không có latency trong CSV — chạy Day 08 với instrument hoặc bổ sung JSON.",
+    "routing_visibility": "Day 09: mỗi trace có supervisor_route + route_reason + workers_called → debug routing dễ hơn Day 08 (single agent không tách bước).",
+    "debuggability": "Multi-agent: test độc lập retrieval / policy / synthesis. Single-agent: chỉ một pipeline RAG.",
+    "mcp_benefit": "Day 09 mở rộng qua MCP tools; Day 08 cần sửa code pipeline nếu thêm nguồn/tool.",
+    "accuracy_delta": "Độ chính xác theo rubric grading: so khớp grading_run.jsonl sau khi chấm — không thay bằng confidence tự động."
   }
 }
