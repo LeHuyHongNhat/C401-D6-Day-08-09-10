@@ -8,7 +8,6 @@ Author: Nguyen Quoc Khanh [Khanh]
 
 import os
 import re
-import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -115,7 +114,6 @@ def split_into_chunks(content: str, base_meta: dict) -> List[Dict[str, Any]]:
 def _get_embedding_fn():
     """
     Khởi tạo OpenAI Embedding function từ cấu hình .env.
-    Dùng LangChain OpenAIEmbeddings hoặc fallback Sentence Transformers.
     """
     api_key = os.getenv("OPENAI_API_KEY")
     if api_key and not api_key.startswith("sk-..."):
@@ -130,16 +128,7 @@ def _get_embedding_fn():
         from langchain_community.embeddings import SentenceTransformerEmbeddings
         return SentenceTransformerEmbeddings(model_name="all-MiniLM-L6-v2")
     except ImportError:
-        # Final fallback: direct SentenceTransformer
-        try:
-            from sentence_transformers import SentenceTransformer
-            model = SentenceTransformer("all-MiniLM-L6-v2")
-            class SimpleEmbedder:
-                def embed_documents(self, texts): return model.encode(texts).tolist()
-                def embed_query(self, text): return model.encode([text])[0].tolist()
-            return SimpleEmbedder()
-        except ImportError:
-            raise ValueError("Yêu cầu OPENAI_API_KEY hoặc cài đặt sentence-transformers.")
+        raise ValueError("Yêu cầu OPENAI_API_KEY hoặc cài đặt sentence-transformers.")
 
 
 def _get_collection():
