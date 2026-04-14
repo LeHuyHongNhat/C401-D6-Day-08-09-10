@@ -19,6 +19,9 @@ Gọi độc lập để test:
 import os
 import sys
 from typing import Optional
+from dotenv import load_dotenv
+
+load_dotenv()
 
 WORKER_NAME = "policy_tool_worker"
 
@@ -34,19 +37,31 @@ def _call_mcp_tool(tool_name: str, tool_input: dict) -> dict:
     Sprint 3 TODO: Implement bằng cách import mcp_server hoặc gọi HTTP.
 
     Hiện tại: Import trực tiếp từ mcp_server.py (trong-process mock).
+    `dispatch_tool` trả về {tool, input, output, timestamp}; ta lưu **output** (payload tool)
+    vào key "output" để policy code đọc được .get("chunks"), v.v.
     """
     from datetime import datetime
 
     try:
-        # TODO Sprint 3: Thay bằng real MCP client nếu dùng HTTP server
         from mcp_server import dispatch_tool
-        result = dispatch_tool(tool_name, tool_input)
+
+        raw = dispatch_tool(tool_name, tool_input)
+        if isinstance(raw, dict) and raw.get("error") and "output" not in raw:
+            return {
+                "tool": tool_name,
+                "input": tool_input,
+                "output": None,
+                "error": raw.get("error"),
+                "timestamp": datetime.now().isoformat(),
+            }
+        tool_payload = raw.get("output") if isinstance(raw, dict) else None
         return {
             "tool": tool_name,
             "input": tool_input,
-            "output": result,
+            "output": tool_payload,
             "error": None,
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": (raw.get("timestamp") if isinstance(raw, dict) else None)
+            or datetime.now().isoformat(),
         }
     except Exception as e:
         return {
@@ -178,34 +193,53 @@ def run(state: dict) -> dict:
     }
 
     try:
-        # Step 1: Nếu chưa có chunks, gọi MCP search_kb
-        if not chunks and needs_tool:
-            mcp_result = _call_mcp_tool("search_kb", {"query": task, "top_k": 3})
-            state["mcp_tools_used"].append(mcp_result)
-            state["history"].append(f"[{WORKER_NAME}] called MCP search_kb")
+        # Step 1: Luôn gọi MCP search_kb để lấy policy context từ KB
+        mcp_result = _call_mcp_tool("search_kb", {"query": task, "top_k": 3})
+        state["mcp_tools_used"].append(mcp_result)
+        state["history"].append(f"[{WORKER_NAME}] called MCP search_kb")
 
-            if mcp_result.get("output") and mcp_result["output"].get("chunks"):
-                chunks = mcp_result["output"]["chunks"]
-                state["retrieved_chunks"] = chunks
+        if mcp_result.get("output") and mcp_result["output"].get("chunks"):
+            kb_chunks = mcp_result["output"]["chunks"]
+            # Merge với chunks đã có (nếu retrieval đã chạy trước)
+            existing = {c.get("text", "") for c in chunks}
+            for c in kb_chunks:
+                if c.get("text", "") not in existing:
+                    chunks.append(c)
+            state["retrieved_chunks"] = chunks
+            sources = list({c.get("source") for c in chunks if c.get("source")})
+            state["retrieved_sources"] = sources
 
-        # Step 2: Phân tích policy
+        # Step 2: Với câu access control, gọi thêm MCP check_access_permission
+        task_lower = task.lower()
+        if any(kw in task_lower for kw in ["level 2", "level 3", "level 1", "access", "cấp quyền"]):
+            level = 3
+            if "level 2" in task_lower:
+                level = 2
+            elif "level 1" in task_lower:
+                level = 1
+            is_emergency = any(kw in task_lower for kw in ["khẩn cấp", "emergency", "p1", "2am"])
+            mcp_result2 = _call_mcp_tool("check_access_permission", {
+                "access_level": level,
+                "requester_role": "contractor" if "contractor" in task_lower else "employee",
+                "is_emergency": is_emergency,
+            })
+            state["mcp_tools_used"].append(mcp_result2)
+            state["history"].append(f"[{WORKER_NAME}] called MCP check_access_permission level={level}")
+
+        # Step 3: Phân tích policy
         policy_result = analyze_policy(task, chunks)
         state["policy_result"] = policy_result
-
-        # Step 3: Nếu cần thêm info từ MCP (e.g., ticket status), gọi get_ticket_info
-        if needs_tool and any(kw in task.lower() for kw in ["ticket", "p1", "jira"]):
-            mcp_result = _call_mcp_tool("get_ticket_info", {"ticket_id": "P1-LATEST"})
-            state["mcp_tools_used"].append(mcp_result)
-            state["history"].append(f"[{WORKER_NAME}] called MCP get_ticket_info")
 
         worker_io["output"] = {
             "policy_applies": policy_result["policy_applies"],
             "exceptions_count": len(policy_result.get("exceptions_found", [])),
             "mcp_calls": len(state["mcp_tools_used"]),
+            "chunks_used": len(chunks),
         }
         state["history"].append(
             f"[{WORKER_NAME}] policy_applies={policy_result['policy_applies']}, "
-            f"exceptions={len(policy_result.get('exceptions_found', []))}"
+            f"exceptions={len(policy_result.get('exceptions_found', []))}, "
+            f"mcp_calls={len(state['mcp_tools_used'])}"
         )
 
     except Exception as e:

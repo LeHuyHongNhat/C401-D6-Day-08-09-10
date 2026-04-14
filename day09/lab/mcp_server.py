@@ -194,9 +194,8 @@ ACCESS_RULES = {
 #--------------Taans--------------------------------
 class MockMCPServer:
     """
-    Mock MCP Server — cung cấp 2 tools:
-    1. search_kb(query, top_k) — search Knowledge Base
-    2. get_ticket_info(ticket_id) — tra cứu ticket (mock data)
+    Mock MCP Server — 4 tools (theo PLAN / worker_contracts):
+    search_kb, get_ticket_info, check_access_permission, create_ticket
     """
     def __init__(self):
         self.TOOL_REGISTRY = {
@@ -357,11 +356,28 @@ class MockMCPServer:
             return {
                 "tool": tool_name,
                 "error": str(e),
-                "timestamp": timestamp
+                "timestamp": datetime.now().isoformat(),
             }
 
-    
-    
+
+# Singleton + API module-level (policy_tool, tests)
+_mcp_server = MockMCPServer()
+
+
+def dispatch_tool(tool_name: str, tool_input: dict) -> dict:
+    """Gọi MCP tool — cùng hành vi với MockMCPServer.dispatch_tool."""
+    return _mcp_server.dispatch_tool(tool_name, tool_input)
+
+
+def list_tools():
+    """Discovery: metadata từng tool (inputSchema / outputSchema)."""
+    return _mcp_server.list_tools()
+
+
+def list_tool_names() -> List[str]:
+    """Danh sách tên tool (4 tools theo PLAN)."""
+    return list(_mcp_server.TOOL_REGISTRY.keys())
+
 
 # ─────────────────────────────────────────────
 # Test & Demo
@@ -389,8 +405,8 @@ if __name__ == "__main__":
 
     # 3. Test get_ticket_info
     print("\n🎫 Test: get_ticket_info")
-    result_wrapper = mcp.dispatch_tool("get_ticket_info", {"ticket_id": "P1-LATEST"})
-    ticket = result_wrapper.get("output", {}) 
+    ticket_res = mcp.dispatch_tool("get_ticket_info", {"ticket_id": "P1-LATEST"})
+    ticket = ticket_res.get("output") or ticket_res
     print(f"  Ticket: {ticket.get('ticket_id')} | {ticket.get('priority')} | {ticket.get('status')}")
 
     # 4. Test check_access_permission

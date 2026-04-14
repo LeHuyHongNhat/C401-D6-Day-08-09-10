@@ -38,12 +38,13 @@ supervisor:
       type: boolean
       required: true
   routing_rules:
+    # Thứ tự ưu tiên khớp graph.py: human_review trước policy/retrieval
+    - condition: "task chứa 'err-', 'lỗi không rõ', 'unknown error'"
+      route: "human_review"
     - condition: "task chứa 'hoàn tiền', 'refund', 'flash sale', 'license', 'cấp quyền', 'access level'"
       route: "policy_tool_worker"
     - condition: "task chứa 'P1', 'SLA', 'ticket', 'escalation', 'sự cố'"
       route: "retrieval_worker"
-    - condition: "task chứa mã lỗi không rõ (ERR-xxx) VÀ không có context"
-      route: "human_review"
     - condition: "default"
       route: "retrieval_worker"
   constraints:

@@ -22,8 +22,16 @@ from datetime import datetime
 from typing import Optional
 
 # Import graph
-sys.path.insert(0, os.path.dirname(__file__))
+_LAB_ROOT = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, _LAB_ROOT)
 from graph import run_graph, save_trace
+
+
+def _lab_path(path: str) -> str:
+    """Đường dẫn tương đối repo/CWD → luôn resolve theo thư mục day09/lab (file này)."""
+    if os.path.isabs(path):
+        return os.path.normpath(path)
+    return os.path.normpath(os.path.join(_LAB_ROOT, path))
 
 
 # ─────────────────────────────────────────────
@@ -37,6 +45,7 @@ def run_test_questions(questions_file: str = "data/test_questions.json") -> list
     Returns:
         list of (question, result) tuples
     """
+    questions_file = _lab_path(questions_file)
     with open(questions_file, encoding="utf-8") as f:
         questions = json.load(f)
 
@@ -55,7 +64,7 @@ def run_test_questions(questions_file: str = "data/test_questions.json") -> list
             result["question_id"] = q_id
 
             # Save individual trace
-            trace_file = save_trace(result, f"artifacts/traces")
+            trace_file = save_trace(result, _lab_path("artifacts/traces"))
             print(f"  ✓ route={result.get('supervisor_route', '?')}, "
                   f"conf={result.get('confidence', 0):.2f}, "
                   f"{result.get('latency_ms', 0)}ms")
@@ -95,6 +104,7 @@ def run_grading_questions(questions_file: str = "data/grading_questions.json") -
     Returns:
         path tới grading_run.jsonl
     """
+    questions_file = _lab_path(questions_file)
     if not os.path.exists(questions_file):
         print(f"❌ {questions_file} chưa được public (sau 17:00 mới có).")
         return ""
@@ -102,8 +112,8 @@ def run_grading_questions(questions_file: str = "data/grading_questions.json") -
     with open(questions_file, encoding="utf-8") as f:
         questions = json.load(f)
 
-    os.makedirs("artifacts", exist_ok=True)
-    output_file = "artifacts/grading_run.jsonl"
+    output_file = _lab_path("artifacts/grading_run.jsonl")
+    os.makedirs(os.path.dirname(output_file), exist_ok=True)
 
     print(f"\n🎯 Running GRADING questions — {len(questions)} câu")
     print(f"   Output → {output_file}")
@@ -117,20 +127,30 @@ def run_grading_questions(questions_file: str = "data/grading_questions.json") -
 
             try:
                 result = run_graph(question_text)
+                # Ưu tiên sources từ synthesis (cite trong answer); fallback retrieved_sources
+                _cite = result.get("sources") or []
+                _ret = result.get("retrieved_sources") or []
+                _merged = list(dict.fromkeys([*(_cite or []), *(_ret or [])]))
                 record = {
                     "id": q_id,
                     "question": question_text,
                     "answer": result.get("final_answer", "PIPELINE_ERROR: no answer"),
-                    "sources": result.get("retrieved_sources", []),
-                    "supervisor_route": result.get("supervisor_route", ""),
-                    "route_reason": result.get("route_reason", ""),
+                    "sources": _merged if _merged else (_cite or _ret or []),
+                    "supervisor_route": result.get("supervisor_route", "") or "MISSING",
+                    "route_reason": result.get("route_reason", "") or "MISSING",
                     "workers_called": result.get("workers_called", []),
-                    "mcp_tools_used": [t.get("tool") for t in result.get("mcp_tools_used", [])],
+                    "mcp_tools_used": result.get("mcp_tools_used", []),
                     "confidence": result.get("confidence", 0.0),
                     "hitl_triggered": result.get("hitl_triggered", False),
                     "latency_ms": result.get("latency_ms"),
                     "timestamp": datetime.now().isoformat(),
                 }
+                if record["supervisor_route"] == "MISSING":
+                    print(f"  ⚠️ WARNING [{q_id}]: supervisor_route missing — sẽ bị trừ 20%/câu")
+                if record["route_reason"] == "MISSING":
+                    print(f"  ⚠️ WARNING [{q_id}]: route_reason missing — sẽ bị trừ 20%/câu")
+                if not record["workers_called"]:
+                    print(f"  ⚠️ WARNING [{q_id}]: workers_called missing (required)")
                 print(f"  ✓ route={record['supervisor_route']}, conf={record['confidence']:.2f}")
             except Exception as e:
                 record = {
@@ -174,6 +194,7 @@ def analyze_traces(traces_dir: str = "artifacts/traces") -> dict:
     Returns:
         dict of metrics
     """
+    traces_dir = _lab_path(traces_dir)
     if not os.path.exists(traces_dir):
         print(f"⚠️  {traces_dir} không tồn tại. Chạy run_test_questions() trước.")
         return {}
@@ -185,8 +206,15 @@ def analyze_traces(traces_dir: str = "artifacts/traces") -> dict:
 
     traces = []
     for fname in trace_files:
-        with open(os.path.join(traces_dir, fname)) as f:
-            traces.append(json.load(f))
+        fpath = os.path.join(traces_dir, fname)
+        if os.path.getsize(fpath) == 0:
+            continue
+        with open(fpath) as f:
+            try:
+                traces.append(json.load(f))
+            except json.JSONDecodeError:
+                print(f"⚠️  Skipping invalid JSON: {fname}")
+                continue
 
     # Compute metrics
     routing_counts = {}
@@ -285,8 +313,8 @@ def compare_single_vs_multi(
 
 def save_eval_report(comparison: dict) -> str:
     """Lưu báo cáo eval tổng kết ra file JSON."""
-    os.makedirs("artifacts", exist_ok=True)
-    output_file = "artifacts/eval_report.json"
+    output_file = _lab_path("artifacts/eval_report.json")
+    os.makedirs(os.path.dirname(output_file), exist_ok=True)
     with open(output_file, "w", encoding="utf-8") as f:
         json.dump(comparison, f, ensure_ascii=False, indent=2)
     return output_file
@@ -295,6 +323,38 @@ def save_eval_report(comparison: dict) -> str:
 # ─────────────────────────────────────────────
 # 6. CLI Entry Point
 # ─────────────────────────────────────────────
+
+def run_smoke_test():
+    """Chạy 3 câu smoke test và in ra warning."""
+    SMOKE_TESTS = [
+        ("sq01", "SLA ticket P1 là bao lâu?"),
+        ("sq02", "Khách hàng Flash Sale yêu cầu hoàn tiền"),
+        ("sq03", "Mức phạt tài chính vi phạm SLA P1?"),
+    ]
+    print("\n💨 Running SMOKE TESTS")
+    print("=" * 60)
+    for q_id, text in SMOKE_TESTS:
+        print(f"\n▶ Query [{q_id}]: {text}")
+        try:
+            res = run_graph(text)
+            r_route = res.get("supervisor_route", "")
+            r_reason = res.get("route_reason", "")
+            w_called = res.get("workers_called", [])
+            print(f"  Route: {r_route}")
+            print(f"  Reason: {r_reason}")
+            print(f"  Workers: {w_called}")
+            
+            if not r_route or r_route == "MISSING":
+                print(f"  ⚠️ WARNING: supervisor_route is MISSING!")
+            if not r_reason or r_reason == "MISSING":
+                print(f"  ⚠️ WARNING: route_reason is MISSING!")
+            if not w_called:
+                print(f"  ⚠️ WARNING: workers_called is empty!")
+            answer = res.get('final_answer') or ""
+            print(f"  Answer: {answer[:60]}...")
+        except Exception as e:
+            print(f"  ❌ ERROR: {e}")
+    print("\n✅ Smoke tests done.")
 
 def print_metrics(metrics: dict):
     """Print metrics đẹp."""
@@ -319,6 +379,7 @@ if __name__ == "__main__":
     parser.add_argument("--grading", action="store_true", help="Run grading questions")
     parser.add_argument("--analyze", action="store_true", help="Analyze existing traces")
     parser.add_argument("--compare", action="store_true", help="Compare single vs multi")
+    parser.add_argument("--smoke-test", action="store_true", help="Run quick smoke test")
     parser.add_argument("--test-file", default="data/test_questions.json", help="Test questions file")
     args = parser.parse_args()
 
@@ -328,6 +389,9 @@ if __name__ == "__main__":
         if log_file:
             print(f"\n✅ Grading log: {log_file}")
             print("   Nộp file này trước 18:00!")
+
+    elif args.smoke_test:
+        run_smoke_test()
 
     elif args.analyze:
         # Phân tích traces
