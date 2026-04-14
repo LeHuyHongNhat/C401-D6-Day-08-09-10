@@ -12,10 +12,14 @@ Chạy thử:
 import json
 import os
 from datetime import datetime
-from typing import TypedDict, Literal, Optional
+from typing import TypedDict, Literal, Optional, cast, Any
 
 import time
 from langgraph.graph import StateGraph, START, END
+
+from workers.retrieval import run as retrieval_run
+from workers.policy_tool import run as policy_tool_run
+from workers.synthesis import run as synthesis_run
 
 # ─────────────────────────────────────────────
 # 1. Shared State — dữ liệu đi xuyên toàn graph
@@ -44,6 +48,7 @@ class AgentState(TypedDict):
 
     # Trace & history
     history: list                       # Lịch sử các bước đã qua
+    worker_io_logs: list                 # Log I/O từng worker (append; contract PLAN)
     workers_called: list                # Danh sách workers đã được gọi
     supervisor_route: str               # Worker được chọn bởi supervisor
     latency_ms: Optional[int]           # Thời gian xử lý (ms)
@@ -66,10 +71,12 @@ def make_initial_state(task: str) -> AgentState:
         "sources": [],
         "confidence": 0.0,
         "history": [],
+        "worker_io_logs": [],
         "workers_called": [],
         "supervisor_route": "",
         "latency_ms": None,
-        "run_id": f"run_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+        # microseconds để mỗi invoke trong batch eval không ghi đè file trace
+        "run_id": f"run_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}",
     }
 
 
@@ -163,61 +170,30 @@ def human_review_node(state: AgentState) -> AgentState:
 
 
 # ─────────────────────────────────────────────
-# 5. Import Workers
+# 5. Worker nodes — gọi workers thật (retrieval / policy_tool / synthesis)
 # ─────────────────────────────────────────────
 
-# TODO Sprint 2: Uncomment sau khi implement workers
-# from workers.retrieval import run as retrieval_run
-# from workers.policy_tool import run as policy_tool_run
-# from workers.synthesis import run as synthesis_run
+
+def _ensure_worker_log(state: AgentState) -> None:
+    state.setdefault("worker_io_log", [])
 
 
 def retrieval_worker_node(state: AgentState) -> AgentState:
-    """Wrapper gọi retrieval worker."""
-    # TODO Sprint 2: Thay bằng retrieval_run(state)
-    state["workers_called"].append("retrieval_worker")
-    state["history"].append("[retrieval_worker] called")
-
-    # Placeholder output để test graph chạy được
-    state["retrieved_chunks"] = [
-        {"text": "SLA P1: phản hồi 15 phút, xử lý 4 giờ.", "source": "sla_p1_2026.txt", "score": 0.92}
-    ]
-    state["retrieved_sources"] = ["sla_p1_2026.txt"]
-    state["history"].append(f"[retrieval_worker] retrieved {len(state['retrieved_chunks'])} chunks")
-    return state
+    """Chạy retrieval (ChromaDB) — bổ sung evidence vào state."""
+    _ensure_worker_log(state)
+    return cast(AgentState, retrieval_run(cast(dict[str, Any], state)))
 
 
 def policy_tool_worker_node(state: AgentState) -> AgentState:
-    """Wrapper gọi policy/tool worker."""
-    # TODO Sprint 2: Thay bằng policy_tool_run(state)
-    state["workers_called"].append("policy_tool_worker")
-    state["history"].append("[policy_tool_worker] called")
-
-    # Placeholder output
-    state["policy_result"] = {
-        "policy_applies": True,
-        "policy_name": "refund_policy_v4",
-        "exceptions_found": [],
-        "source": "policy_refund_v4.txt",
-    }
-    state["history"].append("[policy_tool_worker] policy check complete")
-    return state
+    """Chạy policy + MCP (search_kb, check_access, …)."""
+    _ensure_worker_log(state)
+    return cast(AgentState, policy_tool_run(cast(dict[str, Any], state)))
 
 
 def synthesis_worker_node(state: AgentState) -> AgentState:
-    """Wrapper gọi synthesis worker."""
-    # TODO Sprint 2: Thay bằng synthesis_run(state)
-    state["workers_called"].append("synthesis_worker")
-    state["history"].append("[synthesis_worker] called")
-
-    # Placeholder output
-    chunks = state.get("retrieved_chunks", [])
-    sources = state.get("retrieved_sources", [])
-    state["final_answer"] = f"[PLACEHOLDER] Câu trả lời được tổng hợp từ {len(chunks)} chunks."
-    state["sources"] = sources
-    state["confidence"] = 0.75
-    state["history"].append(f"[synthesis_worker] answer generated, confidence={state['confidence']}")
-    return state
+    """Chạy synthesis (LLM grounded) — final_answer, sources, confidence."""
+    _ensure_worker_log(state)
+    return cast(AgentState, synthesis_run(cast(dict[str, Any], state)))
 
 
 # ─────────────────────────────────────────────
@@ -273,7 +249,7 @@ def run_graph(task: str) -> AgentState:
     """
     state = make_initial_state(task)
     t0 = time.time()
-    result = _graph.invoke(state)
+    result = cast(AgentState, _graph.invoke(state))
     result["latency_ms"] = int((time.time() - t0) * 1000)
     return result
 
@@ -316,4 +292,4 @@ if __name__ == "__main__":
         trace_file = save_trace(result)
         print(f"  Trace saved → {trace_file}")
 
-    print("\n✅ graph.py test complete. Implement TODO sections in Sprint 1 & 2.")
+    print("\n✅ graph.py — workers retrieval + policy_tool + synthesis đã nối.")

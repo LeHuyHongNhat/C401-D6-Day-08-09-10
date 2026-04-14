@@ -37,19 +37,31 @@ def _call_mcp_tool(tool_name: str, tool_input: dict) -> dict:
     Sprint 3 TODO: Implement bằng cách import mcp_server hoặc gọi HTTP.
 
     Hiện tại: Import trực tiếp từ mcp_server.py (trong-process mock).
+    `dispatch_tool` trả về {tool, input, output, timestamp}; ta lưu **output** (payload tool)
+    vào key "output" để policy code đọc được .get("chunks"), v.v.
     """
     from datetime import datetime
 
     try:
-        # TODO Sprint 3: Thay bằng real MCP client nếu dùng HTTP server
         from mcp_server import dispatch_tool
-        result = dispatch_tool(tool_name, tool_input)
+
+        raw = dispatch_tool(tool_name, tool_input)
+        if isinstance(raw, dict) and raw.get("error") and "output" not in raw:
+            return {
+                "tool": tool_name,
+                "input": tool_input,
+                "output": None,
+                "error": raw.get("error"),
+                "timestamp": datetime.now().isoformat(),
+            }
+        tool_payload = raw.get("output") if isinstance(raw, dict) else None
         return {
             "tool": tool_name,
             "input": tool_input,
-            "output": result,
+            "output": tool_payload,
             "error": None,
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": (raw.get("timestamp") if isinstance(raw, dict) else None)
+            or datetime.now().isoformat(),
         }
     except Exception as e:
         return {
