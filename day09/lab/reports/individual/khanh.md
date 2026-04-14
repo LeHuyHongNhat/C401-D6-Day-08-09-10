@@ -53,7 +53,21 @@ Tôi đã chủ động phối hợp với Supervisor Owner để sửa file `gr
 
 ---
 
-## 4. Tôi tự đánh giá đóng góp của mình
+## 5. Phân tích trọng tâm: gq01 & gq05 (Phát hiện từ Trace)
+
+**Câu gq01: "SLA xử lý ticket P1 là bao lâu?"**
+- **Trace Analysis**: Hệ thống route chính xác vào `retrieval_worker`. 
+- **Retrieval Performance**: Nhờ `ALIAS_MAP` ánh xạ "ticket P1" sang các keywords trong tài liệu, worker đã tìm thấy file `sla_p1_2026.txt`. 
+- **Impact**: Việc embedding trúng section "Phần 2: SLA theo mức độ ưu tiên" giúp Synthesis trả lời ngay lập tức 2 mốc quan trọng: 15 phút (phản hồi) và 4 giờ (xử lý). Độ tin cậy đạt 0.50 (grounded hoàn toàn vào 1 file).
+
+**Câu gq05: "Nhân viên được làm remote tối đa mấy ngày mỗi tuần?"**
+- **Trace Analysis**: Câu hỏi này được Supervisor nhận diện là "general knowledge query" và route về Retrieval.
+- **Retrieval Performance**: Kết quả trả về chunk "Phần 4: Remote work policy" từ file `hr_leave_policy.txt`. 
+- **Sâu chuỗi thông tin**: Chunk này chứa điều kiện quan trọng: "Nhân viên sau probation period có thể làm remote tối đa 2 ngày/tuần". Retrieval đã cung cấp đủ ngữ cảnh để LLM không chỉ trả lời số ngày (2 ngày) mà còn nêu kèm điều kiện "sau thử việc". Đây là minh chứng cho thấy Semantic Chunking của tôi giữ được các ràng buộc logic đi kèm.
+
+---
+
+## 6. Tôi tự đánh giá đóng góp của mình
 
 **Tôi làm tốt nhất ở điểm nào?**
 Tôi đã hoàn thiện module Retrieval rất sớm và ổn định, giúp cả nhóm có bằng chứng thực tế để test routing ngay từ Sprint 2. Ngoài ra, việc tôi chủ động debug lỗi state chung thay vì chỉ quan tâm đến worker của riêng mình đã giúp pipeline end-to-end hoạt động trơn tru.
@@ -66,6 +80,6 @@ Retrieval là "cửa ngõ" dữ liệu. Nếu retrieval trả về sai nguồn h
 
 ---
 
-## 5. Nếu có thêm 2 giờ, tôi sẽ làm gì?
+## 7. Nếu có thêm 2 giờ, tôi sẽ làm gì?
 
 Tôi sẽ thử nghiệm kỹ thuật **Hybrid Search (kết hợp Semantic Search và BM25)**. Qua phân tích trace của câu `gq05`, tôi nhận thấy nếu người dùng gõ sai thuật ngữ chuyên môn, chỉ dùng vector search đôi khi không tìm được chính xác section header. Kết hợp BM25 sẽ giúp tăng độ phủ cho các từ khóa chính xác (keywords).
