@@ -389,22 +389,19 @@ if __name__ == "__main__":
 
     # 3. Test get_ticket_info
     print("\n🎫 Test: get_ticket_info")
-    ticket = mcp.dispatch_tool("get_ticket_info", {"output.ticket_id": "P1-LATEST"})
+    result_wrapper = mcp.dispatch_tool("get_ticket_info", {"ticket_id": "P1-LATEST"})
+    ticket = result_wrapper.get("output", {}) 
     print(f"  Ticket: {ticket.get('ticket_id')} | {ticket.get('priority')} | {ticket.get('status')}")
-    if ticket.get("notifications_sent"):
-        print(f"  Notifications: {ticket['notifications_sent']}")
 
     # 4. Test check_access_permission
     print("\n🔐 Test: check_access_permission (Level 3, emergency)")
-    perm = mcp.dispatch_tool("check_access_permission", {
+    result_wrapper = mcp.dispatch_tool("check_access_permission", {
         "access_level": 3,
         "requester_role": "contractor",
         "is_emergency": True,
     })
+    perm = result_wrapper.get("output", {}) 
     print(f"  can_grant: {perm.get('can_grant')}")
-    print(f"  required_approvers: {perm.get('required_approvers')}")
-    print(f"  emergency_override: {perm.get('emergency_override')}")
-    print(f"  notes: {perm.get('notes')}")
 
     # 5. Test invalid tool
     print("\n❌ Test: invalid tool")
