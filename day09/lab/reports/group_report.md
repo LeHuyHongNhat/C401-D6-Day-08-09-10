@@ -73,6 +73,8 @@ Mục tiêu chính của Day 09 không phải là tăng điểm số mà là tă
 
 ## 5. Phân công và Đóng góp Nhóm
 
+| Thành viên | Trách nhiệm chính | Đóng góp |
+|------------|-------------------|----------|
 | Lê Huy Hồng Nhật | Xây dựng Graph, Logic Supervisor, Tích hợp LangGraph | 17% |
 | Nguyễn Quốc Khánh | Phát triển Retrieval Worker và Semantic Splitting | 17% |
 | Nguyễn Tuấn Khải | Phát triển Policy Worker + Synthesis Worker | 17% |
