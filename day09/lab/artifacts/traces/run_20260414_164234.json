@@ -1,0 +1,79 @@
+{
+  "task": "Nhân viên vừa vào thử việc (trong probation period) muốn làm remote vì lý do cá nhân. Điều kiện là gì?",
+  "route_reason": "default route — general knowledge query",
+  "risk_high": false,
+  "needs_tool": false,
+  "hitl_triggered": false,
+  "retrieved_chunks": [
+    {
+      "text": "===\n\n4.1 Điều kiện remote:\n- Nhân viên sau probation period có thể làm remote tối đa 2 ngày/tuần.\n- Team Lead phải phê duyệt lịch remote qua HR Portal.\n- Ngày onsite bắt buộc: Thứ 3 và Thứ 5 theo lịch team.\n\n4.2 Yêu cầu kỹ thuật khi remote:\n- Kết nối VPN bắt buộc khi làm việc với hệ thống nội bộ.\n- Camera bật trong các cuộc họp team.",
+      "source": "hr_leave_policy.txt",
+      "score": 0.679,
+      "metadata": {
+        "source": "hr_leave_policy.txt",
+        "chunk_index": 9
+      }
+    },
+    {
+      "text": "Bước 1: Nhân viên gửi yêu cầu nghỉ phép qua hệ thống HR Portal (https://hr.company.internal) ít nhất 3 ngày làm việc trước ngày nghỉ.",
+      "source": "hr_leave_policy.txt",
+      "score": 0.4296,
+      "metadata": {
+        "chunk_index": 5,
+        "source": "hr_leave_policy.txt"
+      }
+    },
+    {
+      "text": "===\nEscalation chỉ áp dụng khi cần thay đổi quyền hệ thống ngoài quy trình thông thường.\nVí dụ: Khẩn cấp trong sự cố P1, cần cấp quyền tạm thời để fix incident.\n\nQuy trình escalation khẩn cấp:\n1. On-call IT Admin có thể cấp quyền tạm thời (max 24 giờ) sau khi được Tech Lead phê duyệt bằng lời.\n2. Sau 24 giờ, phải có ticket chính thức hoặc quyền bị thu hồi tự động.\n3. Mọi quyền tạm thời phải được ghi log vào hệ thống Security Audit.",
+      "source": "access_control_sop.txt",
+      "score": 0.41,
+      "metadata": {
+        "source": "access_control_sop.txt",
+        "chunk_index": 11
+      }
+    },
+    {
+      "text": "===\nQuyền phải được thu hồi trong các trường hợp:\n- Nhân viên nghỉ việc: Thu hồi ngay trong ngày cuối.\n- Hết hạn contract: Thu hồi đúng ngày hết hạn.\n- Chuyển bộ phận: Điều chỉnh trong 3 ngày làm việc.",
+      "source": "access_control_sop.txt",
+      "score": 0.397,
+      "metadata": {
+        "source": "access_control_sop.txt",
+        "chunk_index": 12
+      }
+    },
+    {
+      "text": "Level 2 — Standard Access:\nÁp dụng cho: Nhân viên chính thức đã qua thử việc.\nPhê duyệt: Line Manager + IT Admin.\nThời gian xử lý: 2 ngày làm việc.",
+      "source": "access_control_sop.txt",
+      "score": 0.3638,
+      "metadata": {
+        "source": "access_control_sop.txt",
+        "chunk_index": 3
+      }
+    }
+  ],
+  "retrieved_sources": [
+    "hr_leave_policy.txt",
+    "access_control_sop.txt"
+  ],
+  "policy_result": {},
+  "mcp_tools_used": [],
+  "final_answer": "Nhân viên trong thời gian thử việc (probation period) không đủ điều kiện để làm remote. Điều kiện làm remote chỉ áp dụng cho nhân viên đã qua probation period, với các quy định cụ thể như sau:\n\n1. Nhân viên có thể làm remote tối đa 2 ngày/tuần.\n2. Team Lead phải phê duyệt lịch remote qua HR Portal.\n3. Ngày onsite bắt buộc: Thứ 3 và Thứ 5 theo lịch team [1].",
+  "sources": [
+    "hr_leave_policy.txt",
+    "access_control_sop.txt"
+  ],
+  "confidence": 0.46,
+  "history": [
+    "[supervisor] route=retrieval_worker | reason=default route — general knowledge query",
+    "[retrieval_worker] retrieved 5 chunks from ['hr_leave_policy.txt', 'access_control_sop.txt']",
+    "[synthesis_worker] answer generated, confidence=0.46, sources=['hr_leave_policy.txt', 'access_control_sop.txt']"
+  ],
+  "workers_called": [
+    "retrieval_worker",
+    "synthesis_worker"
+  ],
+  "supervisor_route": "retrieval_worker",
+  "latency_ms": 15057,
+  "run_id": "run_20260414_164234",
+  "question_id": "q14"
+}

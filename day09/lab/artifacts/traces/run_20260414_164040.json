@@ -1,0 +1,77 @@
+{
+  "task": "Ticket P1 không được phản hồi sau 10 phút. Hệ thống tự động làm gì?",
+  "route_reason": "task contains SLA/incident keyword",
+  "risk_high": false,
+  "needs_tool": false,
+  "hitl_triggered": false,
+  "retrieved_chunks": [
+    {
+      "text": "Ticket P2:\n- Phản hồi ban đầu: 2 giờ.\n- Xử lý và khắc phục: 1 ngày làm việc.\n- Escalation: Tự động escalate sau 90 phút không có phản hồi.",
+      "source": "sla_p1_2026.txt",
+      "score": 0.7095,
+      "metadata": {
+        "chunk_index": 3,
+        "source": "sla_p1_2026.txt"
+      }
+    },
+    {
+      "text": "Ticket P1:\n- Phản hồi ban đầu (first response): 15 phút kể từ khi ticket được tạo.\n- Xử lý và khắc phục (resolution): 4 giờ.\n- Escalation: Tự động escalate lên Senior Engineer nếu không có phản hồi trong 10 phút.\n- Thông báo stakeholder: Ngay khi nhận ticket, update mỗi 30 phút cho đến khi resolve.",
+      "source": "sla_p1_2026.txt",
+      "score": 0.6988,
+      "metadata": {
+        "chunk_index": 2,
+        "source": "sla_p1_2026.txt"
+      }
+    },
+    {
+      "text": "Ticket P3:\n- Phản hồi ban đầu: 1 ngày làm việc.\n- Xử lý và khắc phục: 5 ngày làm việc.",
+      "source": "sla_p1_2026.txt",
+      "score": 0.631,
+      "metadata": {
+        "chunk_index": 4,
+        "source": "sla_p1_2026.txt"
+      }
+    },
+    {
+      "text": "===\nTicket system: Jira (project IT-SUPPORT)\nSlack channel: #incident-p1, #incident-p2\nPagerDuty: Tự động nhắn on-call khi P1 ticket mới\nHotline on-call: ext. 9999 (24/7)",
+      "source": "sla_p1_2026.txt",
+      "score": 0.6013,
+      "metadata": {
+        "source": "sla_p1_2026.txt",
+        "chunk_index": 11
+      }
+    },
+    {
+      "text": "Ticket P4:\n- Phản hồi ban đầu: 3 ngày làm việc.\n- Xử lý và khắc phục: Theo sprint cycle (thông thường 2-4 tuần).",
+      "source": "sla_p1_2026.txt",
+      "score": 0.5491,
+      "metadata": {
+        "source": "sla_p1_2026.txt",
+        "chunk_index": 5
+      }
+    }
+  ],
+  "retrieved_sources": [
+    "sla_p1_2026.txt"
+  ],
+  "policy_result": {},
+  "mcp_tools_used": [],
+  "final_answer": "Nếu ticket P1 không được phản hồi sau 10 phút, hệ thống sẽ tự động escalate lên Senior Engineer. [2]",
+  "sources": [
+    "sla_p1_2026.txt"
+  ],
+  "confidence": 0.64,
+  "history": [
+    "[supervisor] route=retrieval_worker | reason=task contains SLA/incident keyword",
+    "[retrieval_worker] retrieved 5 chunks from ['sla_p1_2026.txt']",
+    "[synthesis_worker] answer generated, confidence=0.64, sources=['sla_p1_2026.txt']"
+  ],
+  "workers_called": [
+    "retrieval_worker",
+    "synthesis_worker"
+  ],
+  "supervisor_route": "retrieval_worker",
+  "latency_ms": 10592,
+  "run_id": "run_20260414_164040",
+  "question_id": "q06"
+}
