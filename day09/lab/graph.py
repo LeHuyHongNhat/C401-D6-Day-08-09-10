@@ -11,11 +11,15 @@ Chạy thử:
 
 import json
 import os
+import time
 from datetime import datetime
 from typing import TypedDict, List, Optional, Literal
 
-# Load LangGraph components
 from langgraph.graph import StateGraph, START, END
+
+# ─────────────────────────────────────────────
+# 1. Shared State — dữ liệu đi xuyên toàn graph
+# ─────────────────────────────────────────────
 
 # 1. AgentState — Định nghĩa cấu trúc dữ liệu chung
 class AgentState(TypedDict):
@@ -41,7 +45,8 @@ class AgentState(TypedDict):
     sources: List[str]
     confidence: float
     hitl_triggered: bool
-    history: List[dict]              # lịch sử các bước đã chạy (trace)
+    history: List[str]               # lịch sử các bước đã chạy (trace) - dùng string để tương thích main
+    latency_ms: Optional[int]
 
 
 def make_initial_state(task: str) -> AgentState:
@@ -72,37 +77,35 @@ def supervisor_node(state: AgentState) -> AgentState:
     """
     Supervisor phân tích task và quyết định:
     1. Route sang worker nào
-    2. Có risk cao cần HITL không
-
-    Cập nhật logic routing dựa trên các từ khóa (keywords) trong câu hỏi.
+    2. Có cần MCP tool không
+    3. Có risk cao cần HITL không
     """
     task = state["task"].lower()
 
-    # Routing logic mặc định
+    # Routing logic dựa trên keywords của README.md
     route = "retrieval_worker"
-    reason = "default route — general knowledge query"
+    route_reason = "default route — general knowledge query"
     risk_high = False
 
-    # Logic phân loại dựa trên keywords
-    if any(kw in task for kw in ["hoàn tiền", "refund", "flash sale", "digital", "license"]):
+    if any(kw in task for kw in ["hoàn tiền", "refund", "flash sale", "license", "kỹ thuật số", "digital"]):
         route = "policy_tool_worker"
-        reason = "task contains refund/policy keyword"
-    elif any(kw in task for kw in ["cấp quyền", "access", "level", "contractor", "emergency"]):
+        route_reason = "task contains refund/policy keyword"
+    elif any(kw in task for kw in ["cấp quyền", "access", "level 3", "level 2", "contractor", "emergency", "khẩn cấp"]):
         route = "policy_tool_worker"
-        reason = "task contains access control keyword"
-    elif any(kw in task for kw in ["p1", "escalation", "sla", "ticket", "on-call"]):
+        route_reason = "task contains access control keyword"
+    elif any(kw in task for kw in ["p1", "escalation", "sla", "ticket", "on-call", "sự cố"]):
         route = "retrieval_worker"
-        reason = "task contains SLA/incident keyword"
+        route_reason = "task contains SLA/incident keyword"
     elif any(kw in task for kw in ["err-", "lỗi không rõ", "unknown error"]):
         route = "human_review"
-        reason = "unrecognized error code — escalate to human"
+        route_reason = "unrecognized error code — escalate to human"
+        risk_high = True
 
     state["supervisor_route"] = route
-    state["route_reason"] = reason
+    state["route_reason"] = route_reason
     state["risk_high"] = risk_high
 
-    # Log history - đơn giản hóa thành chuỗi cho lab
-    state["history"].append({"node": "supervisor", "action": "route", "route": route, "reason": reason})
+    state["history"].append(f"[supervisor] route={route} | reason={route_reason}")
 
     return state
 
@@ -129,7 +132,7 @@ def human_review_node(state: AgentState) -> AgentState:
     HITL node: pause và chờ human approval.
     """
     state["hitl_triggered"] = True
-    state["history"].append({"node": "human_review", "action": "trigger_hitl"})
+    state["history"].append("[human_review] trigger_hitl")
 
     # Placeholder: tự động approve để pipeline tiếp tục
     print(f"\n⚠️  HITL TRIGGERED")
@@ -157,20 +160,20 @@ def human_review_node(state: AgentState) -> AgentState:
 def retrieval_worker_node(state: AgentState) -> AgentState:
     """Wrapper gọi retrieval worker."""
     # TODO Sprint 2: Thay bằng retrieval_run(state)
-    state["history"].append({"node": "retrieval_worker", "action": "start"})
+    state["history"].append("[retrieval_worker] start")
 
     # Placeholder output để test graph chạy được
     state["retrieved_chunks"] = [
         {"text": "SLA P1: phản hồi 15 phút, xử lý 4 giờ.", "source": "sla_p1_2026.txt", "score": 0.92}
     ]
-    state["history"].append({"node": "retrieval_worker", "action": "completed", "num_chunks": len(state["retrieved_chunks"])})
+    state["history"].append(f"[retrieval_worker] completed | chunks={len(state['retrieved_chunks'])}")
     return state
 
 
 def policy_tool_worker_node(state: AgentState) -> AgentState:
     """Wrapper gọi policy/tool worker."""
     # TODO Sprint 2: Thay bằng policy_tool_run(state)
-    state["history"].append({"node": "policy_tool_worker", "action": "start"})
+    state["history"].append("[policy_tool_worker] start")
 
     # Placeholder output
     state["policy_result"] = {
@@ -179,21 +182,21 @@ def policy_tool_worker_node(state: AgentState) -> AgentState:
         "evidence": "policy_refund_v4.txt",
         "mcp_tool_called": None
     }
-    state["history"].append({"node": "policy_tool_worker", "action": "completed"})
+    state["history"].append("[policy_tool_worker] completed")
     return state
 
 
 def synthesis_worker_node(state: AgentState) -> AgentState:
     """Wrapper gọi synthesis worker."""
     # TODO Sprint 2: Thay bằng synthesis_run(state)
-    state["history"].append({"node": "synthesis_worker", "action": "start"})
+    state["history"].append("[synthesis_worker] start")
 
     # Placeholder output
     chunks = state.get("retrieved_chunks", [])
     state["final_answer"] = f"[PLACEHOLDER] Câu trả lời được tổng hợp từ {len(chunks)} chunks."
     state["sources"] = list({c["source"] for c in chunks})
     state["confidence"] = 0.75
-    state["history"].append({"node": "synthesis_worker", "action": "completed", "confidence": state["confidence"]})
+    state["history"].append(f"[synthesis_worker] completed | confidence={state['confidence']}")
     return state
 
 
@@ -203,41 +206,37 @@ def synthesis_worker_node(state: AgentState) -> AgentState:
 
 def build_graph():
     """
-    Xây dựng graph với supervisor-worker pattern bằng LangGraph.
+    Xây dựng graph với supervisor-worker pattern bằng LangGraph StateGraph.
     """
-    # 1. Khởi tạo StateGraph với AgentState
     workflow = StateGraph(AgentState)
 
-    # 2. Thêm các Nodes
+    # Thêm các nodes
     workflow.add_node("supervisor", supervisor_node)
     workflow.add_node("retrieval_worker", retrieval_worker_node)
     workflow.add_node("policy_tool_worker", policy_tool_worker_node)
     workflow.add_node("human_review", human_review_node)
     workflow.add_node("synthesis_worker", synthesis_worker_node)
 
-    # 3. Định nghĩa các Edges
+    # Định nghĩa edges
     workflow.add_edge(START, "supervisor")
 
-    # Conditional logic cho supervisor
+    # Conditional routing từ supervisor
     workflow.add_conditional_edges(
         "supervisor",
         route_decision,
         {
             "retrieval_worker": "retrieval_worker",
             "policy_tool_worker": "policy_tool_worker",
-            "human_review": "human_review"
+            "human_review": "human_review",
         }
     )
 
-    # Kết nối các workers
+    # Kết nối workers → synthesis
     workflow.add_edge("human_review", "retrieval_worker")
     workflow.add_edge("retrieval_worker", "synthesis_worker")
     workflow.add_edge("policy_tool_worker", "synthesis_worker")
-
-    # Kết thúc tại synthesis
     workflow.add_edge("synthesis_worker", END)
 
-    # 4. Compile graph
     return workflow.compile()
 
 
@@ -250,11 +249,12 @@ _graph = build_graph()
 
 def run_graph(task: str) -> AgentState:
     """
-    Entry point: nhận câu hỏi, chạy qua LangGraph và trả về AgentState.
+    Entry point: nhận câu hỏi, chạy qua LangGraph và trả về AgentState với full trace.
     """
     state = make_initial_state(task)
-    # LangGraph returns the full final state
+    t0 = time.time()
     result = _graph.invoke(state)
+    result["latency_ms"] = int((time.time() - t0) * 1000)
     return result
 
 
